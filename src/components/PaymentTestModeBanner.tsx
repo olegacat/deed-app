@@ -1,19 +1,18 @@
-const clientToken = import.meta.env['VITE_PAYMENTS_CLIENT_TOKEN'];
+import { isStripeTestMode } from "@/lib/stripe";
 
 export function PaymentTestModeBanner() {
-  if (!clientToken) {
+  if (!isStripeTestMode()) {
     return (
-      <div className="w-full border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-center text-xs text-destructive">
-        Production checkout is not configured yet. Complete go-live to accept real payments.
+      <div className="mb-6 rounded-sm border border-border bg-secondary/50 px-4 py-3 text-xs text-muted-foreground">
+        Stripe live mode — real cards will be charged.
       </div>
     );
   }
-  if (clientToken.startsWith("pk_test_")) {
-    return (
-      <div className="w-full border-b border-accent/40 bg-accent/10 px-4 py-2 text-center text-xs text-foreground">
-        All payments in the preview are in test mode. Use card 4242 4242 4242 4242.
-      </div>
-    );
-  }
-  return null;
+
+  return (
+    <div className="mb-6 rounded-sm border border-accent/35 bg-accent/10 px-4 py-3 text-xs text-foreground">
+      Stripe test mode — use card <span className="font-mono">4242 4242 4242 4242</span>, any future
+      expiry and CVC.
+    </div>
+  );
 }

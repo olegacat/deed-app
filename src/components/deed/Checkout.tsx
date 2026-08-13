@@ -43,28 +43,7 @@ export const emptyCheckout = (): CheckoutData => ({
 const inputCls =
   "mt-1.5 w-full rounded-sm border border-input bg-card px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:border-accent/50 focus:border-ring focus:ring-2 focus:ring-ring/25";
 
-const PLANS = {
-  single: {
-    label: "Single package",
-    price: "$49",
-    cadence: "one-time",
-    priceId: "single_deed_onetime",
-    blurb: "One deed package for this property.",
-    perks: ["Draft deed + recording forms", "Transfer-tax worksheet", "PDF export & email copy"],
-  },
-  monthly: {
-    label: "Firm monthly",
-    price: "$149",
-    cadence: "per month",
-    priceId: "firm_monthly",
-    blurb: "Unlimited packages across all live states.",
-    perks: [
-      "Everything in Single package",
-      "Unlimited deed packages",
-      "Saved matters in your account",
-    ],
-  },
-} as const;
+import { CHECKOUT_PLANS } from "@/lib/checkout-plans";
 
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
@@ -100,7 +79,7 @@ export function Checkout({
   const [authError, setAuthError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const session = useSession();
-  const plan = PLANS[data.plan];
+  const plan = CHECKOUT_PLANS[data.plan];
 
   const emailOk = /.+@.+\..+/.test(data.email);
   const canPay = emailOk && (!data.saveToAccount || data.signedIn || data.password.length >= 6);
@@ -141,8 +120,8 @@ export function Checkout({
             Checkout<span className="text-accent">.</span>
           </h2>
           <p className="mt-3 max-w-lg text-sm leading-relaxed text-muted-foreground">
-            Simulated checkout for the {state.name} package. No card is charged and no account is
-            created — this screen exists so attorneys can review the billing and delivery flow.
+            Choose a plan and pay securely via Stripe to unlock the {state.name} deed package —
+            draft deed, transfer-tax worksheet, and PDF export.
           </p>
         </div>
 
@@ -150,8 +129,8 @@ export function Checkout({
         <section className="space-y-4">
           <SectionHeader step="A" title="Choose a plan" />
           <div className="grid gap-3 sm:grid-cols-2">
-            {(Object.keys(PLANS) as Array<keyof typeof PLANS>).map((key) => {
-              const p = PLANS[key];
+            {(Object.keys(CHECKOUT_PLANS) as Array<keyof typeof CHECKOUT_PLANS>).map((key) => {
+              const p = CHECKOUT_PLANS[key];
               const active = data.plan === key;
               return (
                 <button
@@ -177,7 +156,7 @@ export function Checkout({
                     </span>
                   </div>
                   <p className="mt-3 font-display text-3xl leading-none text-foreground">
-                    {p.price}
+                    {p.displayPrice}
                     <span className="ml-1.5 text-[11px] font-normal tracking-wide text-muted-foreground">
                       {p.cadence}
                     </span>
@@ -408,7 +387,7 @@ export function Checkout({
             <p className="text-[12.5px] leading-snug text-foreground">
               Card details are collected in a secure payment window.
               <span className="block text-[11px] text-muted-foreground">
-                Click “Pay {plan.price}” below to open it. Test mode card: 4242 4242 4242 4242.
+                Click “Pay {plan.displayPrice}” below to open it. Test mode card: 4242 4242 4242 4242.
               </span>
             </p>
           </div>
@@ -428,7 +407,7 @@ export function Checkout({
             disabled={!canPay || processing}
             className="rounded-sm border border-accent bg-accent px-6 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {processing ? "Processing…" : `Pay ${plan.price} & generate deed`}
+            {processing ? "Processing…" : `Pay ${plan.displayPrice} & generate deed`}
           </button>
           {!emailOk && (
             <span className="text-[11px] text-muted-foreground">Add a valid email to continue.</span>
@@ -444,10 +423,10 @@ export function Checkout({
           {state.name} deed package
         </h3>
         <div className="divide-y divide-border border-y border-border">
-          <Row label={plan.label} value={plan.price} />
+          <Row label={plan.label} value={plan.displayPrice} />
           <Row label="Recording fees (paid at county)" value="Not included" />
           <Row label="Transfer tax (paid at closing)" value="Not included" />
-          <Row label={`Total due ${plan.cadence}`} value={plan.price} strong />
+          <Row label={`Total due ${plan.cadence}`} value={plan.displayPrice} strong />
         </div>
         <ul className="space-y-2 text-[12px] leading-relaxed text-muted-foreground">
           <li className="flex gap-2">
@@ -462,18 +441,18 @@ export function Checkout({
           </li>
         </ul>
         <div className="rounded-sm bg-sidebar p-4 text-sidebar-foreground">
-          <p className="font-display text-lg italic leading-tight">Prototype checkout</p>
+          <p className="font-display text-lg italic leading-tight">Secure checkout</p>
           <p className="mt-2 text-[11.5px] leading-relaxed text-sidebar-foreground/70">
-            No payment is processed, no card data leaves this browser, and no account is stored.
-            Every document remains an illustrative draft for attorney and title review.
+            Card details are handled by Stripe. Drafts remain illustrative — for attorney and title
+            review before recording.
           </p>
         </div>
       </aside>
     </div>
     <PaywallDialog
       open={paywallOpen}
-      priceId={plan.priceId}
-      title={`${plan.label} — ${plan.price}`}
+      plan={data.plan}
+      title={`${plan.label} — ${plan.displayPrice}`}
       {...(data.email ? { email: data.email } : {})}
       {...(session.user?.id ? { userId: session.user.id } : {})}
       onClose={() => setPaywallOpen(false)}

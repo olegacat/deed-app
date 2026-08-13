@@ -1,10 +1,14 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { defaultCounty, findState } from "@/data/states";
 import { useTaxSummary } from "@/hooks/use-tax-summary";
 import { Link } from "@tanstack/react-router";
-import { isNYExtendedFlow } from "@/lib/jurisdiction-config";
+import {
+  checkoutStep,
+  isNYExtendedFlow,
+  packageStep,
+} from "@/lib/jurisdiction-config";
 import {
   hasLiveLookup,
   lookupParcels,
@@ -13,12 +17,43 @@ import {
 } from "@/lib/parcel-lookup";
 
 import { emptyForm, IntakeForm, type DeedForm } from "@/components/deed/IntakeForm";
+import { Checkout, emptyCheckout, type CheckoutData } from "@/components/deed/Checkout";
 import { PackageView } from "@/components/deed/Package";
 import { ExtractStep } from "@/components/deed/Extract";
 import { EvidenceStep } from "@/components/deed/Evidence";
 import { ProfileRail } from "@/components/deed/ProfileRail";
 import { SellingPoints } from "@/components/deed/SellingPoints";
 import { ProgressSteps, ProgressViewSwitcher } from "@/components/deed/ProgressSteps";
+
+type WizardDraft = {
+  form: DeedForm;
+  checkout: CheckoutData;
+  parcelUsed: boolean;
+};
+
+function wizardStorageKey(stateCode: string) {
+  return `deed-wizard-${stateCode}`;
+}
+
+function loadWizardDraft(stateCode: string): WizardDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(wizardStorageKey(stateCode));
+    return raw ? (JSON.parse(raw) as WizardDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveWizardDraft(stateCode: string, draft: WizardDraft) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(wizardStorageKey(stateCode), JSON.stringify(draft));
+}
+
+function clearWizardDraft(stateCode: string) {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem(wizardStorageKey(stateCode));
+}
 
 export const Route = createFileRoute("/deed/$state")({
   head: ({ params }) => {
@@ -47,6 +82,7 @@ function DeedWizard() {
   const [form, setForm] = useState<DeedForm>(() =>
     emptyForm(defaultCounty(state?.code ?? "", state?.counties ?? []), state?.code),
   );
+  const [checkout, setCheckout] = useState<CheckoutData>(() => emptyCheckout());
   const [parcelUsed, setParcelUsed] = useState(false);
   const [lookupStatus, setLookupStatus] = useState<string | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
@@ -61,12 +97,37 @@ function DeedWizard() {
     singleFamily: form.singleFamily,
   });
 
+  const payStep = checkoutStep(code);
+  const pkgStep = packageStep(code);
+
+  // Restore wizard after Stripe redirect (full page reload drops React state).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("checkout") !== "success") return;
+
+    const draft = loadWizardDraft(code);
+    if (draft) {
+      setForm(draft.form);
+      setCheckout(draft.checkout);
+      setParcelUsed(draft.parcelUsed);
+    }
+    setStep(pkgStep);
+    window.history.replaceState({}, "", window.location.pathname);
+    clearWizardDraft(code);
+  }, [code, pkgStep]);
+
+  useEffect(() => {
+    if (step < payStep) return;
+    saveWizardDraft(code, { form, checkout, parcelUsed });
+  }, [code, form, checkout, parcelUsed, step, payStep]);
+
   if (!state) return <Navigate to="/states" />;
 
   const set = <K extends keyof DeedForm>(k: K, v: DeedForm[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
-  const packageStep = nyFlow ? 3 : 1;
+  const setCheckoutField = <K extends keyof CheckoutData>(k: K, v: CheckoutData[K]) =>
+    setCheckout((c) => ({ ...c, [k]: v }));
 
   const applyParcel = (p: ParcelRecord) => {
     const fields = parcelToFormFields(p);
@@ -124,7 +185,7 @@ function DeedWizard() {
 
   const onBuild = () => {
     if (!parcelUsed) return;
-    setStep(nyFlow ? 1 : packageStep);
+    setStep(nyFlow ? 1 : payStep);
   };
 
   return (
@@ -221,12 +282,25 @@ function DeedWizard() {
             state={state}
             form={form}
             onBack={() => setStep(0)}
-            onConfirm={() => setStep(3)}
+            onConfirm={() => setStep(payStep)}
             onRestart={() => setStep(0)}
           />
         )}
 
-        {step === packageStep && (
+        {step === payStep && (
+          <Checkout
+            state={state}
+            data={checkout}
+            set={setCheckoutField}
+            onBack={() => setStep(nyFlow ? 2 : 0)}
+            onPaid={() => {
+              clearWizardDraft(state.code);
+              setStep(pkgStep);
+            }}
+          />
+        )}
+
+        {step === pkgStep && (
           <PackageView state={state} form={form} onRestart={() => setStep(0)} />
         )}
 

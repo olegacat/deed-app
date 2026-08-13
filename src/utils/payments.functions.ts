@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
-import type Stripe from "stripe";
-import { type StripeEnv, createStripeClient, getStripeErrorMessage } from "@/lib/stripe.server";
+import { CHECKOUT_PLANS, type CheckoutPlan } from "@/lib/checkout-plans";
+import { createStripeClient, getStripeErrorMessage, getStripeSecretKey } from "@/lib/stripe.server";
 
 type CheckoutSessionResult = { clientSecret: string } | { error: string };
 
@@ -22,7 +22,7 @@ async function resolveOrCreateCustomer(
     const existing = await stripe.customers.list({ email: options.email, limit: 1 });
     if (existing.data.length) {
       const customer = existing.data[0]!;
-      if (options.userId && customer.metadata?.['userId'] !== options.userId) {
+      if (options.userId && customer.metadata?.["userId"] !== options.userId) {
         await stripe.customers.update(customer.id, {
           metadata: { ...customer.metadata, userId: options.userId },
         });
@@ -39,53 +39,54 @@ async function resolveOrCreateCustomer(
 
 export const createCheckoutSession = createServerFn({ method: "POST" })
   .inputValidator((data: {
-    priceId: string;
+    plan: CheckoutPlan;
     customerEmail?: string;
     userId?: string;
     returnUrl: string;
-    environment: StripeEnv;
   }) => {
-    if (!/^[a-zA-Z0-9_-]+$/.test(data.priceId)) throw new Error("Invalid priceId");
+    if (data.plan !== "single" && data.plan !== "monthly") {
+      throw new Error('plan must be "single" or "monthly".');
+    }
     return data;
   })
   .handler(async ({ data }): Promise<CheckoutSessionResult> => {
     try {
-      const stripe = createStripeClient(data.environment);
+      const stripe = createStripeClient(await getStripeSecretKey());
+      const plan = CHECKOUT_PLANS[data.plan];
+      const isRecurring = plan.recurring;
 
-      const prices = await stripe.prices.list({ lookup_keys: [data.priceId] });
-      if (!prices.data.length) throw new Error("Price not found");
-      const stripePrice = prices.data[0]!;
-      const isRecurring = stripePrice.type === "recurring";
-
-      const customerId = (data.customerEmail || data.userId)
-        ? await resolveOrCreateCustomer(stripe, {
-            ...(data.customerEmail ? { email: data.customerEmail } : {}),
-            ...(data.userId ? { userId: data.userId } : {}),
-          })
-        : undefined;
-
-      let productDescription: string | undefined;
-      if (!isRecurring) {
-        const productId = typeof stripePrice.product === "string"
-          ? stripePrice.product
-          : stripePrice.product.id;
-        const product = await stripe.products.retrieve(productId);
-        productDescription = (product as Stripe.Product).name;
-      }
+      const customerId =
+        data.customerEmail || data.userId
+          ? await resolveOrCreateCustomer(stripe, {
+              ...(data.customerEmail ? { email: data.customerEmail } : {}),
+              ...(data.userId ? { userId: data.userId } : {}),
+            })
+          : undefined;
 
       const session = await stripe.checkout.sessions.create({
-        line_items: [{ price: stripePrice.id, quantity: 1 }],
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: "usd",
+              unit_amount: plan.unitAmount,
+              product_data: { name: plan.productName },
+              ...(isRecurring && plan.interval ? { recurring: { interval: plan.interval } } : {}),
+            },
+          },
+        ],
         mode: isRecurring ? "subscription" : "payment",
         ui_mode: "embedded_page",
         return_url: data.returnUrl,
-        managed_payments: { enabled: true },
         ...(customerId && { customer: customerId }),
-        ...(!isRecurring && { payment_intent_data: { description: productDescription } }),
+        ...(!isRecurring && {
+          payment_intent_data: { description: plan.productName },
+        }),
         ...(data.userId && {
-          metadata: { userId: data.userId, managed_payments: "true" },
+          metadata: { userId: data.userId, plan: data.plan },
           ...(isRecurring && { subscription_data: { metadata: { userId: data.userId } } }),
         }),
-      } as Stripe.Checkout.SessionCreateParams);
+      });
 
       return { clientSecret: session.client_secret ?? "" };
     } catch (error) {

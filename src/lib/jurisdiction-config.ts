@@ -230,11 +230,21 @@ export function wizardSteps(stateCode: string) {
       { label: "Intake", note: "Property, parties, consideration" },
       { label: "Find & extract", note: "Live parcel, roll, documents" },
       { label: "Review evidence", note: "Every value traced to a source" },
+      { label: "Checkout", note: "Plan, account & secure payment" },
       { label: "Package", note: "Tax summary, forms, draft deed" },
     ];
   }
   return [
     { label: "Intake", note: "Property, parties, consideration" },
+    { label: "Checkout", note: "Plan, account & secure payment" },
     { label: "Package", note: "Tax summary, forms, draft deed" },
   ];
+}
+
+export function checkoutStep(stateCode: string): number {
+  return isNYExtendedFlow(stateCode) ? 3 : 1;
+}
+
+export function packageStep(stateCode: string): number {
+  return isNYExtendedFlow(stateCode) ? 4 : 2;
 }

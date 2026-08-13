@@ -1,18 +1,18 @@
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
 import { X } from "lucide-react";
-import { getStripe, getStripeEnvironment } from "@/lib/stripe";
+import { getStripe } from "@/lib/stripe";
 import { createCheckoutSession } from "@/utils/payments.functions";
 
 export function PaywallDialog({
   open,
-  priceId,
+  plan,
   email,
   userId,
   title,
   onClose,
 }: {
   open: boolean;
-  priceId: string;
+  plan: "single" | "monthly";
   email?: string;
   userId?: string;
   title: string;
@@ -23,11 +23,10 @@ export function PaywallDialog({
   const fetchClientSecret = async (): Promise<string> => {
     const result = await createCheckoutSession({
       data: {
-        priceId,
+        plan,
         ...(email ? { customerEmail: email } : {}),
         ...(userId ? { userId } : {}),
         returnUrl: `${window.location.href.split("?")[0]}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-        environment: getStripeEnvironment(),
       },
     });
     if ("error" in result) throw new Error(result.error);

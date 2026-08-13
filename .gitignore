@@ -16,6 +16,11 @@ dist-ssr
 .nitro
 *.local
 
+# Env (secrets stay local — use .dev.vars for STRIPE_SECRET_KEY)
+.env
+.env.*
+!.env.example
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars

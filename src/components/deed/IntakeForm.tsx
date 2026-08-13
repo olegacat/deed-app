@@ -74,6 +74,29 @@ export const emptyForm = (county: string, stateCode?: string): DeedForm => {
   };
 };
 
+type LookupNoticeTone = "loading" | "success" | "error" | "info";
+
+function lookupNoticeTone(
+  text: string | null,
+  parcelError: string | null,
+  lookupLoading: boolean,
+): LookupNoticeTone {
+  if (parcelError) return "error";
+  if (!text) return "info";
+  if (lookupLoading || /^Querying\b/i.test(text) || /Searching/i.test(text)) return "loading";
+  if (/^Loaded from\b/i.test(text) || /parcels? found/i.test(text)) return "success";
+  if (/failed|No parcels matched|No live parcel connector/i.test(text)) return "error";
+  if (/Enter a street|enter values manually|enter the parcel manually/i.test(text)) return "info";
+  return "info";
+}
+
+const LOOKUP_NOTICE_STYLES: Record<LookupNoticeTone, string> = {
+  loading: "border-accent/35 bg-accent/10 text-foreground",
+  success: "border-success/45 bg-success/10 text-success",
+  error: "border-destructive/40 bg-destructive/10 text-destructive",
+  info: "border-border bg-secondary/60 text-muted-foreground",
+};
+
 const labelCls = "block text-xs font-semibold text-foreground";
 const inputCls =
   "mt-1.5 w-full rounded-sm border border-input bg-card px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:border-accent/50 focus:border-ring focus:ring-2 focus:ring-ring/25";
@@ -92,6 +115,30 @@ export function Field({
       <label className={labelCls}>{label}</label>
       {children}
       {hint && <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+export function SectionHeader({
+  step,
+  title,
+  note,
+}: {
+  step: string;
+  title: string;
+  note?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-3">
+      <div className="flex items-baseline gap-3">
+        <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-accent">{step}</span>
+        <h3 className="font-display text-xl leading-none text-foreground">{title}</h3>
+      </div>
+      {note ? (
+        <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          {note}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -499,11 +546,19 @@ export function IntakeForm({
           </button>
         </div>
 
-        {(parcelError || lookupStatus) && (
-          <p className="rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            {parcelError || lookupStatus}
-          </p>
-        )}
+        {(parcelError || lookupStatus) && (() => {
+          const message = parcelError || lookupStatus!;
+          const tone = lookupNoticeTone(lookupStatus, parcelError, lookupLoading);
+          return (
+            <p
+              className={`flex items-center gap-2 rounded-sm border px-3 py-2 text-xs ${LOOKUP_NOTICE_STYLES[tone]}`}
+            >
+              {tone === "loading" && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-accent" />}
+              {tone === "success" && <Check className="h-3.5 w-3.5 shrink-0 text-success" />}
+              <span>{message}</span>
+            </p>
+          );
+        })()}
 
         {lookupResults && lookupResults.length > 1 && !parcelUsed && (
           <ul className="divide-y divide-border rounded-sm border border-border">
