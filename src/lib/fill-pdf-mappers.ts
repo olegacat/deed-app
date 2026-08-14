@@ -1,4 +1,5 @@
 import type { DeedForm } from "@/lib/deed-form.types";
+import { applyDocumentEdits, documentEditInputExtras, type DocumentEdits } from "@/lib/document-edits";
 import { NJ_EXEMPTIONS } from "@/lib/intake-profiles";
 import { formToNjParcel } from "@/lib/nj/forms";
 import type { FillPdfRequest } from "@/lib/fill-pdf";
@@ -103,15 +104,17 @@ function formToBaseParcel(form: DeedForm, stateCode: string) {
 }
 
 /** Map DeedForm → payload shape expected by deed-copilot fill-forms (NJ). */
-export function deedFormToNjFillPayload(form: DeedForm): FillPdfRequest {
-  const parcel = formToNjParcel(form);
+export function deedFormToNjFillPayload(form: DeedForm, edits?: DocumentEdits): FillPdfRequest {
+  const merged = applyDocumentEdits(form, edits);
+  const parcel = formToNjParcel(merged);
   const input = {
-    ...baseInput(form),
-    grantorResidency: grantorResidency(form),
-    njExemption: njExemptionCode(form.njExemption),
-    exemptionDescribe: form.exemptionDescribe,
+    ...baseInput(merged),
+    ...documentEditInputExtras(edits),
+    grantorResidency: grantorResidency(merged),
+    njExemption: njExemptionCode(merged.njExemption),
+    exemptionDescribe: merged.exemptionDescribe,
     conditionOfConveyance:
-      form.njExemption !== NJ_EXEMPTIONS[0] || !hasConsideration(form) ? "p" : "a",
+      merged.njExemption !== NJ_EXEMPTIONS[0] || !hasConsideration(merged) ? "p" : "a",
   };
 
   return {
@@ -124,64 +127,69 @@ export function deedFormToNjFillPayload(form: DeedForm): FillPdfRequest {
   };
 }
 
-function deedFormToCtFillPayload(form: DeedForm): FillPdfRequest {
-  const parcel = formToBaseParcel(form, "CT");
+function deedFormToCtFillPayload(form: DeedForm, edits?: DocumentEdits): FillPdfRequest {
+  const merged = applyDocumentEdits(form, edits);
+  const parcel = formToBaseParcel(merged, "CT");
   return {
     input: {
-      ...baseInput(form),
-      grantorResidency: grantorResidency(form),
-      ctExempt: !hasConsideration(form),
-      exemptionDescribe: form.exemptionDescribe,
+      ...baseInput(merged),
+      ...documentEditInputExtras(edits),
+      grantorResidency: grantorResidency(merged),
+      ctExempt: !hasConsideration(merged),
+      exemptionDescribe: merged.exemptionDescribe,
     },
     parcel,
   };
 }
 
-function deedFormToNyFillPayload(form: DeedForm, stateCode: string): FillPdfRequest {
-  const parcel = formToBaseParcel(form, stateCode);
+function deedFormToNyFillPayload(form: DeedForm, stateCode: string, edits?: DocumentEdits): FillPdfRequest {
+  const merged = applyDocumentEdits(form, edits);
+  const parcel = formToBaseParcel(merged, stateCode);
   return {
     input: {
       grantorEntity: "INDIVIDUAL",
-      granteeEntity: GRANTEE_ENTITY[form.granteeType] ?? "INDIVIDUAL",
-      newGrantee: form.granteeName,
-      trusteeAddress: form.trusteeAddress,
-      considerationKind: considerationKind(form),
-      consideration: Number(form.consideration) || 0,
-      grantorResidency: grantorResidency(form),
-      conditionOfConveyance: form.conditionOfConveyance || "a",
-      exemptionCategory: form.exemptionCategory || "d",
-      gainReported: form.gainReported ? "YES" : "NO",
-      creditLineMortgage: form.creditLineMortgage ? "YES" : "NO",
-      buyerAttorney: form.buyerAttorney,
-      buyerAttorneyPhone: form.buyerAttorneyPhone,
-      sellerAttorney: form.sellerAttorney,
-      sellerAttorneyPhone: form.sellerAttorneyPhone,
-      additionalParties: form.additionalGrantees,
-      conveyanceDate: form.date,
+      granteeEntity: GRANTEE_ENTITY[merged.granteeType] ?? "INDIVIDUAL",
+      newGrantee: merged.granteeName,
+      trusteeAddress: merged.trusteeAddress,
+      considerationKind: considerationKind(merged),
+      consideration: Number(merged.consideration) || 0,
+      grantorResidency: grantorResidency(merged),
+      conditionOfConveyance: merged.conditionOfConveyance || "a",
+      exemptionCategory: merged.exemptionCategory || "d",
+      gainReported: merged.gainReported ? "YES" : "NO",
+      creditLineMortgage: merged.creditLineMortgage ? "YES" : "NO",
+      buyerAttorney: merged.buyerAttorney,
+      buyerAttorneyPhone: merged.buyerAttorneyPhone,
+      sellerAttorney: merged.sellerAttorney,
+      sellerAttorneyPhone: merged.sellerAttorneyPhone,
+      additionalParties: merged.additionalGrantees,
+      conveyanceDate: merged.date,
+      ...documentEditInputExtras(edits),
     },
     parcel,
   };
 }
 
-function deedFormToGenericFillPayload(form: DeedForm, stateCode: string): FillPdfRequest {
-  const parcel = formToBaseParcel(form, stateCode);
-  const input: Record<string, unknown> = { ...baseInput(form) };
-  if (stateCode === "MD") input.mdFirstTimeBuyer = form.mdFirstTimeBuyer;
+function deedFormToGenericFillPayload(form: DeedForm, stateCode: string, edits?: DocumentEdits): FillPdfRequest {
+  const merged = applyDocumentEdits(form, edits);
+  const parcel = formToBaseParcel(merged, stateCode);
+  const input: Record<string, unknown> = { ...baseInput(merged), ...documentEditInputExtras(edits) };
+  if (stateCode === "MD") input.mdFirstTimeBuyer = merged.mdFirstTimeBuyer;
   return { input, parcel };
 }
 
 /** Route DeedForm to the fill-forms payload for any supported state. */
-export function deedFormToFillPayload(stateCode: string, form: DeedForm): FillPdfRequest {
+export function deedFormToFillPayload(stateCode: string, form: DeedForm, edits?: DocumentEdits): FillPdfRequest {
   switch (stateCode) {
     case "NJ":
-      return deedFormToNjFillPayload(form);
+      return deedFormToNjFillPayload(form, edits);
     case "CT":
-      return deedFormToCtFillPayload(form);
+      return deedFormToCtFillPayload(form, edits);
     case "NY":
     case "NYC":
-      return deedFormToNyFillPayload(form, stateCode);
+      return deedFormToNyFillPayload(form, stateCode, edits);
     default:
-      return deedFormToGenericFillPayload(form, stateCode);
+      return deedFormToGenericFillPayload(form, stateCode, edits);
   }
 }
 

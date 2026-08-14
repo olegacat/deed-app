@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { DeedForm } from "./IntakeForm";
 import { Pill } from "./Chrome";
 import { usePackageCompute } from "@/hooks/use-package-compute";
@@ -10,15 +10,9 @@ import {
 } from "@/lib/nj/forms";
 import { downloadPackagePdf } from "@/lib/fill-pdf";
 import { deedFormToNjFillPayload, njPdfFilename } from "@/lib/fill-pdf-mappers";
+import type { DocumentEdits } from "@/lib/document-edits";
 import { formatUSD } from "@/lib/tax";
-
-function Fill({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="border-b border-[#e8d48a] bg-[#fffbe9] px-0.5 font-semibold text-[#222]">
-      {children}
-    </span>
-  );
-}
+import { EditableField } from "./EditableField";
 
 function DeedHint({ children }: { children: React.ReactNode }) {
   return <span className="text-xs text-muted-foreground">{children}</span>;
@@ -75,7 +69,17 @@ function ReviewPanel({ review }: { review: NjReview }) {
   );
 }
 
-function NJDeedDraft({ form, parcel }: { form: DeedForm; parcel: ReturnType<typeof formToNjParcel> }) {
+function NJDeedDraft({
+  form,
+  parcel,
+  edits,
+  onEdit,
+}: {
+  form: DeedForm;
+  parcel: ReturnType<typeof formToNjParcel>;
+  edits: DocumentEdits;
+  onEdit: (key: string, value: string) => void;
+}) {
   const d = njDeedLines(form, parcel);
   return (
     <div className="font-serif-doc px-1.5 py-2 text-[13.5px] leading-[1.7] text-[#222] [&_p]:mb-1 [&_p]:whitespace-pre-wrap">
@@ -86,38 +90,55 @@ function NJDeedDraft({ form, parcel }: { form: DeedForm; parcel: ReturnType<type
       <p>This Deed is made on the ____ day of __________, 2026,</p>
       <p>&nbsp;</p>
       <p>
-        BETWEEN <Fill>{d.grantor}</Fill> <DeedHint>(Grantor — per deed of record)</DeedHint>, referred
-        to as the Grantor,
+        BETWEEN{" "}
+        <EditableField editKey="nj.deed.grantor" value={d.grantor} edits={edits} onEdit={onEdit} variant="nj" />{" "}
+        <DeedHint>(Grantor — per deed of record)</DeedHint>, referred to as the Grantor,
       </p>
       <p>
-        AND <Fill>{d.grantee}</Fill>, referred to as the Grantee.
+        AND <EditableField editKey="nj.deed.grantee" value={d.grantee} edits={edits} onEdit={onEdit} variant="nj" />,
+        referred to as the Grantee.
       </p>
       <p>&nbsp;</p>
       <p>
         The Grantor grants and conveys (transfers ownership of) the property described below to the
-        Grantee, for <Fill>{d.consid}</Fill>. The Grantor acknowledges receipt of this consideration.
+        Grantee, for{" "}
+        <EditableField editKey="nj.deed.consid" value={d.consid} edits={edits} onEdit={onEdit} variant="nj" />.
+        The Grantor acknowledges receipt of this consideration.
       </p>
       <p>&nbsp;</p>
       <p>
         The property consists of the land and all buildings and structures on the land in the{" "}
-        <Fill>{d.municipality}</Fill>, County of <Fill>{d.county}</Fill>, State of New Jersey,
-        identified as <Fill>{d.taxLot}</Fill> on the municipal tax map.
+        <EditableField
+          editKey="nj.deed.municipality"
+          value={d.municipality}
+          edits={edits}
+          onEdit={onEdit}
+          variant="nj"
+        />
+        , County of{" "}
+        <EditableField editKey="nj.deed.county" value={d.county} edits={edits} onEdit={onEdit} variant="nj" />,
+        State of New Jersey, identified as{" "}
+        <EditableField editKey="nj.deed.taxLot" value={d.taxLot} edits={edits} onEdit={onEdit} variant="nj" /> on
+        the municipal tax map.
       </p>
       <p>&nbsp;</p>
       <p>
-        Commonly known as: <Fill>{d.address}</Fill>.
+        Commonly known as:{" "}
+        <EditableField editKey="nj.deed.address" value={d.address} edits={edits} onEdit={onEdit} variant="nj" />.
       </p>
       <p>&nbsp;</p>
       <p className="font-bold">
         LEGAL DESCRIPTION <DeedHint>— from the recorded deed of record:</DeedHint>
       </p>
       <p className="rounded-md bg-[#fff7e6] p-2">
-        The metes-and-bounds legal description is carried on the prior recorded deed and is attached
-        as Schedule A. [Pending deed-of-record retrieval.]
+        {form.legalDescription.trim()
+          ? form.legalDescription
+          : "The metes-and-bounds legal description is carried on the prior recorded deed and is attached as Schedule A. [Pending deed-of-record retrieval.]"}
       </p>
       <p>&nbsp;</p>
       <p>
-        BEING the same premises conveyed to the Grantor by deed recorded in <Fill>{d.priorRef}</Fill>{" "}
+        BEING the same premises conveyed to the Grantor by deed recorded in{" "}
+        <EditableField editKey="nj.deed.priorRef" value={d.priorRef} edits={edits} onEdit={onEdit} variant="nj" />{" "}
         in the {d.county} County Clerk&apos;s/Register&apos;s Office.
       </p>
       <p>&nbsp;</p>
@@ -127,7 +148,14 @@ function NJDeedDraft({ form, parcel }: { form: DeedForm; parcel: ReturnType<type
       </p>
       <p>&nbsp;</p>
       <p>
-        Prepared by: <Fill>{d.preparedBy}</Fill>
+        Prepared by:{" "}
+        <EditableField
+          editKey="nj.deed.preparedBy"
+          value={d.preparedBy}
+          edits={edits}
+          onEdit={onEdit}
+          variant="nj"
+        />
       </p>
     </div>
   );
@@ -138,11 +166,15 @@ function FormView({
   form,
   parcel,
   tax,
+  edits,
+  onEdit,
 }: {
   doc: { code: string; category: string; reason: string; source: string | null };
   form: DeedForm;
   parcel: ReturnType<typeof formToNjParcel>;
   tax: NjTaxResult;
+  edits: DocumentEdits;
+  onEdit: (key: string, value: string) => void;
 }) {
   const fields = njFormFields(doc.code, form, parcel, tax);
   return (
@@ -167,7 +199,14 @@ function FormView({
         <div className="mt-4 space-y-2 font-serif-doc text-[14px] leading-7 text-foreground">
           {fields.map(([k, v], i) => (
             <p key={i}>
-              <span className="inline-block w-56 text-muted-foreground">{k}</span> <Fill>{v}</Fill>
+              <span className="inline-block w-56 text-muted-foreground">{k}</span>{" "}
+              <EditableField
+                editKey={`nj.form.${k}`}
+                value={v}
+                edits={edits}
+                onEdit={onEdit}
+                variant="nj"
+              />
             </p>
           ))}
         </div>
@@ -200,6 +239,10 @@ export function NJPackageView({
   const [active, setActive] = useState("DEED");
   const [busyPdf, setBusyPdf] = useState(false);
   const [pdfMsg, setPdfMsg] = useState<string | null>(null);
+  const [edits, setEdits] = useState<DocumentEdits>({});
+  const setEdit = useCallback((key: string, value: string) => {
+    setEdits((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
   const realForms = docs
     .filter((d) => ["RTF-1", "RTF-1EE", "GIT/REP-1", "GIT/REP-3"].some((c) => d.code.startsWith(c)))
@@ -211,7 +254,7 @@ export function NJPackageView({
     setBusyPdf(true);
     setPdfMsg(null);
     try {
-      const payload = deedFormToNjFillPayload(form);
+      const payload = deedFormToNjFillPayload(form, edits);
       await downloadPackagePdf(payload, njPdfFilename(parcel));
     } catch (e) {
       setPdfMsg(e instanceof Error ? e.message : "PDF generation failed.");
@@ -316,10 +359,13 @@ export function NJPackageView({
         </div>
 
         <div className={`rounded-sm border border-border bg-card ${active === "DEED" ? "px-1.5 py-2" : "p-6"}`}>
+          <p className="no-print mb-3 px-4 text-xs text-muted-foreground">
+            Click highlighted fields to edit before downloading the PDF.
+          </p>
           {active === "DEED" ? (
-            <NJDeedDraft form={form} parcel={parcel} />
+            <NJDeedDraft form={form} parcel={parcel} edits={edits} onEdit={setEdit} />
           ) : activeDoc ? (
-            <FormView doc={activeDoc} form={form} parcel={parcel} tax={tax} />
+            <FormView doc={activeDoc} form={form} parcel={parcel} tax={tax} edits={edits} onEdit={setEdit} />
           ) : null}
         </div>
       </div>

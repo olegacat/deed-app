@@ -2,11 +2,17 @@ import type { StateInfo } from "@/data/states";
 import { usePackageCompute } from "@/hooks/use-package-compute";
 import { downloadPackagePdf } from "@/lib/fill-pdf";
 import { deedFormToFillPayload, fillPdfFilename } from "@/lib/fill-pdf-mappers";
+import {
+  genericConsiderationText,
+  genericPreparedByText,
+  type DocumentEdits,
+} from "@/lib/document-edits";
 import { formatUSD } from "@/lib/tax";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { DeedForm } from "./IntakeForm";
 import { NJPackageView } from "./NJPackageView";
 import { Pill } from "./Chrome";
+import { EditableField } from "./EditableField";
 
 const SINGULAR: Record<string, string> = {
   counties: "County",
@@ -63,6 +69,14 @@ export function PackageView({
   }
 
   return <GenericPackageView state={state} form={form} onRestart={onRestart} />;
+}
+
+function useDocumentEditsState() {
+  const [edits, setEdits] = useState<DocumentEdits>({});
+  const setEdit = useCallback((key: string, value: string) => {
+    setEdits((prev) => ({ ...prev, [key]: value }));
+  }, []);
+  return { edits, setEdit };
 }
 
 function GenericPackageView({
@@ -131,12 +145,13 @@ function GenericPackageView({
 
   const [busyPdf, setBusyPdf] = useState(false);
   const [pdfMsg, setPdfMsg] = useState<string | null>(null);
+  const { edits, setEdit } = useDocumentEditsState();
 
   async function dlPdf() {
     setBusyPdf(true);
     setPdfMsg(null);
     try {
-      const payload = deedFormToFillPayload(state.code, form);
+      const payload = deedFormToFillPayload(state.code, form, edits);
       await downloadPackagePdf(payload, fillPdfFilename(state.code, form));
     } catch (e) {
       setPdfMsg(e instanceof Error ? e.message : "PDF generation failed.");
@@ -253,6 +268,9 @@ function GenericPackageView({
       </section>
 
       <section className="relative overflow-hidden rounded-sm border border-border bg-card p-10 shadow-sm">
+        <p className="no-print relative mb-4 text-xs text-muted-foreground">
+          Click highlighted fields to edit before downloading the PDF.
+        </p>
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 flex items-center justify-center text-[110px] font-bold uppercase tracking-widest text-muted-foreground/10"
@@ -268,28 +286,52 @@ function GenericPackageView({
           </h3>
           <p className="mt-6">
             THIS INDENTURE, made the{" "}
-            <Placeholder>{form.date || "[date of conveyance]"}</Placeholder>, between{" "}
-            <Placeholder>{form.owner || "[grantor — from deed of record]"}</Placeholder>, grantor,
-            and <Placeholder>{form.granteeName || "[new grantee]"}</Placeholder>
+            <EditableField
+              editKey="deed.date"
+              value={form.date || "[date of conveyance]"}
+              edits={edits}
+              onEdit={setEdit}
+            />
+            , between{" "}
+            <EditableField
+              editKey="deed.grantor"
+              value={form.owner || "[grantor — from deed of record]"}
+              edits={edits}
+              onEdit={setEdit}
+            />
+            , grantor, and{" "}
+            <EditableField
+              editKey="deed.grantee"
+              value={form.granteeName || "[new grantee]"}
+              edits={edits}
+              onEdit={setEdit}
+            />
             {form.granteeType !== "Individual" ? `, a ${form.granteeType.toLowerCase()},` : ""}{" "}
             grantee.
           </p>
           <p className="mt-4">
             WITNESSETH, that the grantor, in consideration of{" "}
-            <Placeholder>
-              {form.nominal
-                ? "ten dollars ($10.00) and other good and valuable consideration"
-                : formatUSD(Number(form.consideration || 0))}
-            </Placeholder>
+            <EditableField
+              editKey="deed.consideration"
+              value={genericConsiderationText(form)}
+              edits={edits}
+              onEdit={setEdit}
+            />
             , does hereby grant and convey unto the grantee all that certain plot, piece or parcel
             of land situate in {form.city || "[city / town]"}, {form.county}{" "}
             {SINGULAR[state.countyLabel] ?? "County"}, {state.name}
             {form.parcel ? `, known as parcel ${form.parcel}` : ""}, described as follows:
           </p>
           <p className="mt-4 rounded-sm border border-warning/50 bg-warning/10 px-4 py-3 text-[13px] leading-relaxed">
-            [LEGAL DESCRIPTION] — carried on the prior recorded instrument for this parcel.{" "}
-            <strong>[Pending recorded-deed retrieval]</strong> — paste the verbatim description from
-            the last deed of record before this draft is used.
+            {form.legalDescription.trim() ? (
+              form.legalDescription
+            ) : (
+              <>
+                [LEGAL DESCRIPTION] — carried on the prior recorded instrument for this parcel.{" "}
+                <strong>[Pending recorded-deed retrieval]</strong> — paste the verbatim description
+                from the last deed of record before this draft is used.
+              </>
+            )}
           </p>
           {form.additionalGrantees.trim() && (
             <p className="mt-4">
@@ -308,15 +350,21 @@ function GenericPackageView({
           <p className="mt-10 border-t border-border pt-2 text-sm">
             ____________________________
             <br />
-            <Placeholder>{form.owner || "[grantor — from deed of record]"}</Placeholder>
+            <EditableField
+              editKey="deed.grantor"
+              value={form.owner || "[grantor — from deed of record]"}
+              edits={edits}
+              onEdit={setEdit}
+            />
           </p>
           <p className="mt-8 text-[13px] text-muted-foreground">
             Prepared by:{" "}
-            <Placeholder>
-              {form.preparedByName || form.preparedByAddress
-                ? `${form.preparedByName} · ${form.preparedByAddress}`
-                : "[Prepared by — name & address]"}
-            </Placeholder>
+            <EditableField
+              editKey="deed.preparedBy"
+              value={genericPreparedByText(form)}
+              edits={edits}
+              onEdit={setEdit}
+            />
             {form.buyerAttorney && <> · Buyer's attorney: {form.buyerAttorney}</>}
             {form.sellerAttorney && <> · Seller's attorney: {form.sellerAttorney}</>}
           </p>
@@ -341,13 +389,5 @@ function GenericPackageView({
         ↺ Start over / change inputs
       </button>
     </div>
-  );
-}
-
-function Placeholder({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-sm bg-secondary px-1.5 py-0.5 text-[0.95em] text-foreground">
-      {children}
-    </span>
   );
 }
