@@ -2,27 +2,14 @@ import type { StateInfo } from "@/data/states";
 import { usePackageCompute } from "@/hooks/use-package-compute";
 import { downloadPackagePdf } from "@/lib/fill-pdf";
 import { deedFormToFillPayload, fillPdfFilename } from "@/lib/fill-pdf-mappers";
-import {
-  genericConsiderationText,
-  genericPreparedByText,
-  type DocumentEdits,
-} from "@/lib/document-edits";
-import { formatUSD } from "@/lib/tax";
-import { useCallback, useState } from "react";
+import type { DocumentEdits } from "@/lib/document-edits";
+import { packageDocNames, packageFormFields } from "@/lib/package-form-fields";
+import { formatUSD, type TaxResult } from "@/lib/tax";
+import { useCallback, useMemo, useState } from "react";
 import type { DeedForm } from "./IntakeForm";
 import { NJPackageView } from "./NJPackageView";
 import { Pill } from "./Chrome";
-import { EditableField } from "./EditableField";
-
-const SINGULAR: Record<string, string> = {
-  counties: "County",
-  parishes: "Parish",
-  boroughs: "Borough",
-  towns: "Town",
-  registries: "Registry of Deeds",
-  jurisdictions: "jurisdiction",
-  wards: "Ward",
-};
+import { PackageDocEditor } from "./PackageDocEditor";
 
 function Column({
   title,
@@ -89,7 +76,7 @@ function GenericPackageView({
   onRestart: () => void;
 }) {
   const { loading, result } = usePackageCompute(state.code, form);
-  const tax =
+  const tax: TaxResult =
     result?.kind === "generic"
       ? result.tax
       : {
@@ -101,6 +88,9 @@ function GenericPackageView({
           flags: [],
           formulaCopy: "",
         };
+
+  const docs = useMemo(() => packageDocNames(tax), [tax]);
+  const [active, setActive] = useState("DEED");
 
   const address = [form.house, form.street].filter(Boolean).join(" ");
   const fullAddress = [address, form.city].filter(Boolean).join(", ");
@@ -147,6 +137,9 @@ function GenericPackageView({
   const [pdfMsg, setPdfMsg] = useState<string | null>(null);
   const { edits, setEdit } = useDocumentEditsState();
 
+  const activeMeta = tax.docs.find((d) => d.name === active);
+  const activeFields = packageFormFields(state.code, active, form, tax);
+
   async function dlPdf() {
     setBusyPdf(true);
     setPdfMsg(null);
@@ -159,8 +152,6 @@ function GenericPackageView({
       setBusyPdf(false);
     }
   }
-
-  const doPrint = () => window.print();
 
   return (
     <div className="space-y-6">
@@ -182,7 +173,7 @@ function GenericPackageView({
           </button>
           <button
             type="button"
-            onClick={doPrint}
+            onClick={() => window.print()}
             className="cursor-pointer rounded-sm border border-input bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary"
           >
             ⤓ Print
@@ -200,16 +191,11 @@ function GenericPackageView({
         <p className="text-sm text-muted-foreground">Computing transfer tax and required forms…</p>
       )}
 
-      <div className="rounded-lg border-l-4 border-info bg-info/5 p-4 text-[13px] leading-relaxed text-foreground">
-        The bundle contains a cover sheet + review checklist, the {form.deedType.toLowerCase()} deed
-        itself, a tax computation and recording-data page, and a one-page tax summary.{" "}
-        {tax.docs.length > 1 && (
-          <>
-            {state.recordingQuirk ??
-              `Confirm the ${state.name} recording office's own cover-sheet and form requirements before submission.`}
-          </>
-        )}
-      </div>
+      <p className="rounded-sm border-l-4 border-info bg-info/5 px-4 py-3 text-[13px] leading-relaxed text-foreground">
+        <strong>Complete package (PDF)</strong> includes every document listed below — cover sheet,
+        deed, transfer-tax forms, and recording data. Edit any highlighted field before downloading;
+        changes are merged into the PDF payload.
+      </p>
 
       <section>
         <h3 className="mb-3 font-display text-2xl text-foreground">Review &amp; to-do</h3>
@@ -221,155 +207,73 @@ function GenericPackageView({
         </div>
       </section>
 
-      <section className="border border-border bg-card p-7">
-        <h3 className="font-display text-2xl text-foreground">Documents in this package</h3>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {tax.docs.map((d) => (
-            <span
-              key={d.name}
-              className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground"
-            >
-              {d.name}
-              <Pill tone={d.required ? "info" : "beta"}>
-                {d.required ? "Required" : "Auto-added"}
-              </Pill>
-            </span>
-          ))}
+      <div className="grid gap-4 lg:grid-cols-[300px_1fr] lg:items-start">
+        <div className="space-y-3">
+          <div className="space-y-2">
+            {docs.map((name) => {
+              const meta = tax.docs.find((d) => d.name === name);
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setActive(name)}
+                  className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-sm border px-3 py-2.5 text-left transition-colors ${
+                    active === name
+                      ? "border-accent bg-accent/5 shadow-[0_0_0_2px_rgba(46,109,164,0.13)]"
+                      : "border-border bg-card hover:border-accent/40"
+                  }`}
+                >
+                  <div>
+                    <div className="text-sm font-bold text-foreground">{name}</div>
+                    {meta?.note && (
+                      <div className="text-[11px] text-muted-foreground">{meta.note}</div>
+                    )}
+                  </div>
+                  {meta && (
+                    <Pill tone={meta.required ? "info" : "beta"}>
+                      {meta.required ? "Required" : "Auto-added"}
+                    </Pill>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="rounded-sm border border-border bg-card p-3">
+            <table className="w-full text-sm">
+              <tbody>
+                {tax.lines.map((l) => (
+                  <tr key={l.label} className="border-b border-border/60 last:border-0">
+                    <td className="py-2 pr-2 text-foreground">
+                      {l.label}
+                      <div className="text-[11px] text-muted-foreground">{l.basis}</div>
+                    </td>
+                    <td className="py-2 text-right tabular-nums text-foreground">
+                      {formatUSD(l.amount)}
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td className="py-2 font-semibold text-foreground">Total</td>
+                  <td className="py-2 text-right font-semibold tabular-nums text-foreground">
+                    {formatUSD(tax.total)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <table className="mt-6 w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <th className="py-2 font-semibold">Item</th>
-              <th className="py-2 font-semibold">Basis</th>
-              <th className="py-2 text-right font-semibold">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tax.lines.map((l) => (
-              <tr key={l.label} className="border-b border-border/60">
-                <td className="py-2 text-foreground">{l.label}</td>
-                <td className="py-2 text-muted-foreground">{l.basis}</td>
-                <td className="py-2 text-right tabular-nums text-foreground">
-                  {formatUSD(l.amount)}
-                </td>
-              </tr>
-            ))}
-            <tr>
-              <td className="py-2 font-bold text-foreground" colSpan={2}>
-                Total due to {tax.authority}
-              </td>
-              <td className="py-2 text-right font-bold tabular-nums text-foreground">
-                {formatUSD(tax.total)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section className="relative overflow-hidden rounded-sm border border-border bg-card p-10 shadow-sm">
-        <p className="no-print relative mb-4 text-xs text-muted-foreground">
-          Click highlighted fields to edit before downloading the PDF.
-        </p>
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 flex items-center justify-center text-[110px] font-bold uppercase tracking-widest text-muted-foreground/10"
-        >
-          Draft
+        <div className="rounded-sm border border-border bg-card p-6">
+          <PackageDocEditor
+            docName={active}
+            {...(activeMeta?.note ? { docNote: activeMeta.note } : {})}
+            fields={activeFields}
+            edits={edits}
+            onEdit={setEdit}
+          />
         </div>
-        <div className="relative font-serif-doc text-[15px] leading-8 text-foreground">
-          <p className="text-center text-xs uppercase tracking-[0.3em] text-muted-foreground">
-            Draft — not for recording
-          </p>
-          <h3 className="mt-4 text-center text-2xl font-bold uppercase tracking-wide">
-            {form.deedType} Deed
-          </h3>
-          <p className="mt-6">
-            THIS INDENTURE, made the{" "}
-            <EditableField
-              editKey="deed.date"
-              value={form.date || "[date of conveyance]"}
-              edits={edits}
-              onEdit={setEdit}
-            />
-            , between{" "}
-            <EditableField
-              editKey="deed.grantor"
-              value={form.owner || "[grantor — from deed of record]"}
-              edits={edits}
-              onEdit={setEdit}
-            />
-            , grantor, and{" "}
-            <EditableField
-              editKey="deed.grantee"
-              value={form.granteeName || "[new grantee]"}
-              edits={edits}
-              onEdit={setEdit}
-            />
-            {form.granteeType !== "Individual" ? `, a ${form.granteeType.toLowerCase()},` : ""}{" "}
-            grantee.
-          </p>
-          <p className="mt-4">
-            WITNESSETH, that the grantor, in consideration of{" "}
-            <EditableField
-              editKey="deed.consideration"
-              value={genericConsiderationText(form)}
-              edits={edits}
-              onEdit={setEdit}
-            />
-            , does hereby grant and convey unto the grantee all that certain plot, piece or parcel
-            of land situate in {form.city || "[city / town]"}, {form.county}{" "}
-            {SINGULAR[state.countyLabel] ?? "County"}, {state.name}
-            {form.parcel ? `, known as parcel ${form.parcel}` : ""}, described as follows:
-          </p>
-          <p className="mt-4 rounded-sm border border-warning/50 bg-warning/10 px-4 py-3 text-[13px] leading-relaxed">
-            {form.legalDescription.trim() ? (
-              form.legalDescription
-            ) : (
-              <>
-                [LEGAL DESCRIPTION] — carried on the prior recorded instrument for this parcel.{" "}
-                <strong>[Pending recorded-deed retrieval]</strong> — paste the verbatim description
-                from the last deed of record before this draft is used.
-              </>
-            )}
-          </p>
-          {form.additionalGrantees.trim() && (
-            <p className="mt-4">
-              Additional grantees (see attachment page):{" "}
-              {form.additionalGrantees
-                .split("\n")
-                .map((s) => s.trim())
-                .filter(Boolean)
-                .join("; ")}
-            </p>
-          )}
-          <p className="mt-6">
-            IN WITNESS WHEREOF, the grantor has executed this deed the day and year first above
-            written.
-          </p>
-          <p className="mt-10 border-t border-border pt-2 text-sm">
-            ____________________________
-            <br />
-            <EditableField
-              editKey="deed.grantor"
-              value={form.owner || "[grantor — from deed of record]"}
-              edits={edits}
-              onEdit={setEdit}
-            />
-          </p>
-          <p className="mt-8 text-[13px] text-muted-foreground">
-            Prepared by:{" "}
-            <EditableField
-              editKey="deed.preparedBy"
-              value={genericPreparedByText(form)}
-              edits={edits}
-              onEdit={setEdit}
-            />
-            {form.buyerAttorney && <> · Buyer's attorney: {form.buyerAttorney}</>}
-            {form.sellerAttorney && <> · Seller's attorney: {form.sellerAttorney}</>}
-          </p>
-        </div>
-      </section>
+      </div>
 
       <p className="text-xs leading-relaxed text-muted-foreground">
         Data-source honesty: tax figures are computed from{" "}
@@ -377,9 +281,7 @@ function GenericPackageView({
           ? `${state.name}'s published rate schedule`
           : `research-grade ${state.name} rates that are not yet verified`}
         ; recording amounts are collected by the {tax.authority}; parcel facts are best-effort from
-        public open data and owner / legal description come from the recorded instrument. This
-        package is illustrative and <strong>not recording-ready</strong> — attorney and title review
-        is required.
+        public open data. This package is illustrative and <strong>not recording-ready</strong>.
       </p>
 
       <button

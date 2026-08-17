@@ -2,21 +2,14 @@ import { useCallback, useMemo, useState } from "react";
 import type { DeedForm } from "./IntakeForm";
 import { Pill } from "./Chrome";
 import { usePackageCompute } from "@/hooks/use-package-compute";
-import type { NjDoc, NjTaxResult, NjReview } from "@/lib/nj/types";
-import {
-  formToNjParcel,
-  njDeedLines,
-  njFormFields,
-} from "@/lib/nj/forms";
+import type { NjDoc, NjReview } from "@/lib/nj/types";
+import { formToNjParcel } from "@/lib/nj/forms";
 import { downloadPackagePdf } from "@/lib/fill-pdf";
 import { deedFormToNjFillPayload, njPdfFilename } from "@/lib/fill-pdf-mappers";
 import type { DocumentEdits } from "@/lib/document-edits";
+import { njTaxToGeneric, packageFormFields } from "@/lib/package-form-fields";
 import { formatUSD } from "@/lib/tax";
-import { EditableField } from "./EditableField";
-
-function DeedHint({ children }: { children: React.ReactNode }) {
-  return <span className="text-xs text-muted-foreground">{children}</span>;
-}
+import { PackageDocEditor } from "./PackageDocEditor";
 
 function DocBadge({ status }: { status: string }) {
   if (status === "REQUIRED") return <Pill tone="info">REQUIRED</Pill>;
@@ -69,156 +62,6 @@ function ReviewPanel({ review }: { review: NjReview }) {
   );
 }
 
-function NJDeedDraft({
-  form,
-  parcel,
-  edits,
-  onEdit,
-}: {
-  form: DeedForm;
-  parcel: ReturnType<typeof formToNjParcel>;
-  edits: DocumentEdits;
-  onEdit: (key: string, value: string) => void;
-}) {
-  const d = njDeedLines(form, parcel);
-  return (
-    <div className="font-serif-doc px-1.5 py-2 text-[13.5px] leading-[1.7] text-[#222] [&_p]:mb-1 [&_p]:whitespace-pre-wrap">
-      <div className="mb-1 text-center font-bold tracking-wide">DEED</div>
-      <div className="mb-[18px] text-center font-sans text-[11.5px] text-muted-foreground">
-        New Jersey · Bargain and Sale — DRAFT
-      </div>
-      <p>This Deed is made on the ____ day of __________, 2026,</p>
-      <p>&nbsp;</p>
-      <p>
-        BETWEEN{" "}
-        <EditableField editKey="nj.deed.grantor" value={d.grantor} edits={edits} onEdit={onEdit} variant="nj" />{" "}
-        <DeedHint>(Grantor — per deed of record)</DeedHint>, referred to as the Grantor,
-      </p>
-      <p>
-        AND <EditableField editKey="nj.deed.grantee" value={d.grantee} edits={edits} onEdit={onEdit} variant="nj" />,
-        referred to as the Grantee.
-      </p>
-      <p>&nbsp;</p>
-      <p>
-        The Grantor grants and conveys (transfers ownership of) the property described below to the
-        Grantee, for{" "}
-        <EditableField editKey="nj.deed.consid" value={d.consid} edits={edits} onEdit={onEdit} variant="nj" />.
-        The Grantor acknowledges receipt of this consideration.
-      </p>
-      <p>&nbsp;</p>
-      <p>
-        The property consists of the land and all buildings and structures on the land in the{" "}
-        <EditableField
-          editKey="nj.deed.municipality"
-          value={d.municipality}
-          edits={edits}
-          onEdit={onEdit}
-          variant="nj"
-        />
-        , County of{" "}
-        <EditableField editKey="nj.deed.county" value={d.county} edits={edits} onEdit={onEdit} variant="nj" />,
-        State of New Jersey, identified as{" "}
-        <EditableField editKey="nj.deed.taxLot" value={d.taxLot} edits={edits} onEdit={onEdit} variant="nj" /> on
-        the municipal tax map.
-      </p>
-      <p>&nbsp;</p>
-      <p>
-        Commonly known as:{" "}
-        <EditableField editKey="nj.deed.address" value={d.address} edits={edits} onEdit={onEdit} variant="nj" />.
-      </p>
-      <p>&nbsp;</p>
-      <p className="font-bold">
-        LEGAL DESCRIPTION <DeedHint>— from the recorded deed of record:</DeedHint>
-      </p>
-      <p className="rounded-md bg-[#fff7e6] p-2">
-        {form.legalDescription.trim()
-          ? form.legalDescription
-          : "The metes-and-bounds legal description is carried on the prior recorded deed and is attached as Schedule A. [Pending deed-of-record retrieval.]"}
-      </p>
-      <p>&nbsp;</p>
-      <p>
-        BEING the same premises conveyed to the Grantor by deed recorded in{" "}
-        <EditableField editKey="nj.deed.priorRef" value={d.priorRef} edits={edits} onEdit={onEdit} variant="nj" />{" "}
-        in the {d.county} County Clerk&apos;s/Register&apos;s Office.
-      </p>
-      <p>&nbsp;</p>
-      <p>
-        The Grantor promises that the Grantor has done no act to encumber the property (this promise
-        is called a &ldquo;covenant as to grantor&apos;s acts,&rdquo; N.J.S.A. 46:4-6).
-      </p>
-      <p>&nbsp;</p>
-      <p>
-        Prepared by:{" "}
-        <EditableField
-          editKey="nj.deed.preparedBy"
-          value={d.preparedBy}
-          edits={edits}
-          onEdit={onEdit}
-          variant="nj"
-        />
-      </p>
-    </div>
-  );
-}
-
-function FormView({
-  doc,
-  form,
-  parcel,
-  tax,
-  edits,
-  onEdit,
-}: {
-  doc: { code: string; category: string; reason: string; source: string | null };
-  form: DeedForm;
-  parcel: ReturnType<typeof formToNjParcel>;
-  tax: NjTaxResult;
-  edits: DocumentEdits;
-  onEdit: (key: string, value: string) => void;
-}) {
-  const fields = njFormFields(doc.code, form, parcel, tax);
-  return (
-    <div>
-      <h3 className="font-display text-xl text-foreground">
-        {doc.code}{" "}
-        <span className="text-sm font-normal text-muted-foreground">· {doc.category}</span>
-      </h3>
-      <p className="mt-2 rounded-sm border-l-4 border-info bg-info/5 px-3 py-2 text-[13px] leading-relaxed text-foreground">
-        {doc.reason}
-        {doc.source && (
-          <>
-            {" "}
-            ·{" "}
-            <a href={doc.source} target="_blank" rel="noreferrer" className="text-accent underline">
-              source
-            </a>
-          </>
-        )}
-      </p>
-      {fields ? (
-        <div className="mt-4 space-y-2 font-serif-doc text-[14px] leading-7 text-foreground">
-          {fields.map(([k, v], i) => (
-            <p key={i}>
-              <span className="inline-block w-56 text-muted-foreground">{k}</span>{" "}
-              <EditableField
-                editKey={`nj.form.${k}`}
-                value={v}
-                edits={edits}
-                onEdit={onEdit}
-                variant="nj"
-              />
-            </p>
-          ))}
-        </div>
-      ) : (
-        <p className="mt-4 text-sm text-muted-foreground">
-          Generated from the same field set; field-level preview omitted in the prototype.
-        </p>
-      )}
-    </div>
-  );
-}
-
 export function NJPackageView({
   form,
   onRestart,
@@ -230,7 +73,8 @@ export function NJPackageView({
   const parcel = useMemo(() => formToNjParcel(form), [form]);
 
   const docs: NjDoc[] = result?.kind === "nj" ? result.docs : [];
-  const tax = result?.kind === "nj" ? result.tax : { lines: [], total: 0 };
+  const njTax = result?.kind === "nj" ? result.tax : { lines: [], total: 0 };
+  const tax = useMemo(() => njTaxToGeneric(njTax), [njTax]);
   const review: NjReview =
     result?.kind === "nj"
       ? result.review
@@ -249,6 +93,7 @@ export function NJPackageView({
     .map((d) => d.code);
 
   const activeDoc = docs.find((d) => d.code === active);
+  const activeFields = packageFormFields("NJ", active, form, tax, njTax);
 
   async function dlPdf() {
     setBusyPdf(true);
@@ -290,10 +135,9 @@ export function NJPackageView({
       </div>
 
       <p className="rounded-sm border-l-4 border-info bg-info/5 px-4 py-3 text-[13px] leading-relaxed text-foreground">
-        <strong>Complete package</strong> is one PDF, in filing order — cover + review checklist, the
-        deed (NJ block/lot/qualifier + prepared-by), then the <strong>actual filled forms</strong>:{" "}
-        {realForms.length ? realForms.join(", ") : "GIT/REP residency certification"}, plus a tax
-        summary and county cover data page.
+        <strong>Complete package (PDF)</strong> is one file in filing order — deed,{" "}
+        {realForms.length ? realForms.join(", ") : "GIT/REP forms"}, cover sheets, and tax summary.
+        Edit highlighted fields below; they are merged into the PDF payload on download.
       </p>
       {pdfMsg && (
         <p className="rounded-sm border border-warning/50 bg-warning/10 px-3 py-2 text-xs text-warning">
@@ -333,7 +177,7 @@ export function NJPackageView({
           <div className="rounded-sm border border-border bg-card p-3">
             <table className="w-full text-sm">
               <tbody>
-                {tax.lines.map((l, i) => (
+                {njTax.lines.map((l, i) => (
                   <tr key={i} className="border-b border-border/60 last:border-0">
                     <td className="py-2 pr-2 text-foreground">
                       {l.name}
@@ -347,34 +191,33 @@ export function NJPackageView({
                 <tr>
                   <td className="py-2 font-semibold text-foreground">Total NJ transfer fees</td>
                   <td className="py-2 text-right font-semibold tabular-nums text-foreground">
-                    {formatUSD(tax.total)}
+                    {formatUSD(njTax.total)}
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            The download contains the deed + every form above as one reviewable file.
-          </p>
         </div>
 
-        <div className={`rounded-sm border border-border bg-card ${active === "DEED" ? "px-1.5 py-2" : "p-6"}`}>
-          <p className="no-print mb-3 px-4 text-xs text-muted-foreground">
-            Click highlighted fields to edit before downloading the PDF.
-          </p>
-          {active === "DEED" ? (
-            <NJDeedDraft form={form} parcel={parcel} edits={edits} onEdit={setEdit} />
-          ) : activeDoc ? (
-            <FormView doc={activeDoc} form={form} parcel={parcel} tax={tax} edits={edits} onEdit={setEdit} />
-          ) : null}
+        <div className="rounded-sm border border-border bg-card p-6">
+          <PackageDocEditor
+            docName={activeDoc?.code ?? active}
+            docNote={
+              activeDoc
+                ? `${activeDoc.reason}${activeDoc.source ? ` · ${activeDoc.source}` : ""}`
+                : undefined
+            }
+            fields={activeFields}
+            edits={edits}
+            onEdit={setEdit}
+          />
         </div>
       </div>
 
       <p className="text-xs leading-relaxed text-muted-foreground">
         Live parcel/assessment data from the NJ MOD-IV composite; grantor name + legal description come
         from the recorded deed of record. Generated documents are illustrative drafts for attorney/title
-        review — not legal advice, not recording-ready. RTF + graduated-fee rates match the current NJ
-        Division of Taxation schedule; exemptions are flagged, never auto-concluded.
+        review — not legal advice, not recording-ready.
       </p>
 
       <button
