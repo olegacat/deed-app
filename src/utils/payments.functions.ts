@@ -77,6 +77,9 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
         ],
         mode: isRecurring ? "subscription" : "payment",
         ui_mode: "embedded_page",
+        // Card payments: stay in embed + fire onComplete (mobile-friendly).
+        // Redirect-based methods (e.g. bank) still use return_url.
+        redirect_on_completion: "if_required",
         return_url: data.returnUrl,
         ...(customerId && { customer: customerId }),
         ...(!isRecurring && {

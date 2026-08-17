@@ -86,16 +86,19 @@ export function Checkout({
 
   const pay = () => setPaywallOpen(true);
 
-  // Stripe returns to this page with ?checkout=success after payment.
+  const handlePaymentComplete = () => {
+    setPaywallOpen(false);
+    setProcessing(false);
+    window.history.replaceState({}, "", window.location.pathname);
+    onPaid();
+  };
+
+  // Fallback when Stripe redirects the whole page (bank-based methods).
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("checkout") !== "success") return;
-    setProcessing(true);
-    window.history.replaceState({}, "", window.location.pathname);
-    setPaywallOpen(false);
-    setProcessing(false);
-    onPaid();
+    handlePaymentComplete();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -456,6 +459,7 @@ export function Checkout({
       {...(data.email ? { email: data.email } : {})}
       {...(session.user?.id ? { userId: session.user.id } : {})}
       onClose={() => setPaywallOpen(false)}
+      onComplete={handlePaymentComplete}
     />
     </>
   );

@@ -10,6 +10,7 @@ export function PaywallDialog({
   userId,
   title,
   onClose,
+  onComplete,
 }: {
   open: boolean;
   plan: "single" | "monthly";
@@ -17,6 +18,7 @@ export function PaywallDialog({
   userId?: string;
   title: string;
   onClose: () => void;
+  onComplete?: () => void;
 }) {
   if (!open) return null;
 
@@ -52,7 +54,15 @@ export function PaywallDialog({
           </button>
         </div>
         <div className="p-2 sm:p-4">
-          <EmbeddedCheckoutProvider stripe={getStripe()} options={{ fetchClientSecret }}>
+          <EmbeddedCheckoutProvider
+            stripe={getStripe()}
+            options={{
+              fetchClientSecret,
+              onComplete: () => {
+                onComplete?.();
+              },
+            }}
+          >
             <EmbeddedCheckout />
           </EmbeddedCheckoutProvider>
         </div>
