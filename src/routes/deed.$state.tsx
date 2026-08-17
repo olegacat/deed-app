@@ -301,7 +301,7 @@ function DeedWizard() {
         )}
 
         {step === pkgStep && (
-          <PackageView state={state} form={form} onRestart={() => setStep(0)} />
+          <PackageView state={state} form={form} />
         )}
 
         <footer className="mt-14 border-t border-border pt-10">

@@ -74,6 +74,13 @@ const FIELD_LABEL_TO_FORM: Record<string, (form: DeedForm, value: string) => Par
   "Gain reported on NYS return": (_, v) => ({
     gainReported: v.toUpperCase().startsWith("Y"),
   }),
+  "Consideration": (_, v) => {
+    if (/nominal|gift|\$0/i.test(v)) return { nominal: true, consideration: "0" };
+    const n = v.replace(/[^\d.]/g, "");
+    if (n) return { nominal: false, consideration: n };
+    return {};
+  },
+  "Deed type": () => ({}),
   "Property address": (_, v) => {
     const m = v.match(/^(\S+)\s+(.+?)(?:,\s*(.+))?$/);
     if (!m) return { street: v };
@@ -118,6 +125,7 @@ const FIELD_LABEL_TO_FORM: Record<string, (form: DeedForm, value: string) => Par
     };
   },
   "NJ exemption claimed": (_, v) => ({ njExemption: v }),
+  "Legal description": (_, v) => ({ legalDescription: v }),
   "Block / lot": (_, v) => {
     const block = v.match(/Block\s+([^·,]+)/i)?.[1]?.trim();
     const lot = v.match(/Lot\s+([^·,]+)/i)?.[1]?.trim();
@@ -161,11 +169,22 @@ function applyLegacyDeedKeys(next: DeedForm, edits: DocumentEdits): DeedForm {
   return form;
 }
 
+function fieldLabelFromEditKey(key: string, prefix: string): string | null {
+  if (!key.startsWith(prefix)) return null;
+  const rest = key.slice(prefix.length);
+  if (prefix === "pkg.form.") {
+    const dot = rest.indexOf(".");
+    if (dot === -1) return null;
+    return rest.slice(dot + 1);
+  }
+  return rest;
+}
+
 function applyFormFieldEdits(form: DeedForm, edits: DocumentEdits, prefix: string) {
   let next = form;
   for (const [key, value] of Object.entries(edits)) {
-    if (!key.startsWith(prefix)) continue;
-    const label = key.slice(prefix.length);
+    const label = fieldLabelFromEditKey(key, prefix);
+    if (!label) continue;
     const patch = FIELD_LABEL_TO_FORM[label]?.(next, value);
     if (patch) next = { ...next, ...patch };
   }
@@ -208,6 +227,9 @@ export function documentEditInputExtras(
     }
     if (key.startsWith("pkg.form.") && key.includes("Grantor")) {
       extras.grantorDisplay = value;
+    }
+    if (key.startsWith("pkg.form.") && key.endsWith(".Legal description")) {
+      extras.legalDescription = value;
     }
   }
 

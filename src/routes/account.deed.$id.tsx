@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { AccountShell } from "@/components/deed/AccountShell";
 import { PackageView } from "@/components/deed/Package";
@@ -28,7 +28,6 @@ export const Route = createFileRoute("/account/deed/$id")({
 
 function SavedDeedPage() {
   const { id } = Route.useParams();
-  const navigate = useNavigate();
   const { deeds } = useSession();
   const deed = deeds.find((d) => d.id === id);
   const state = deed ? findState(deed.stateCode) : undefined;
@@ -69,7 +68,6 @@ function SavedDeedPage() {
               consideration: deed.consideration,
             }
           }
-          onRestart={() => navigate({ to: "/deed/$state", params: { state: state.code } })}
         />
       )}
     </AccountShell>

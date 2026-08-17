@@ -1,15 +1,15 @@
 import type { StateInfo } from "@/data/states";
 import { usePackageCompute } from "@/hooks/use-package-compute";
-import { downloadPackagePdf } from "@/lib/fill-pdf";
 import { deedFormToFillPayload, fillPdfFilename } from "@/lib/fill-pdf-mappers";
-import type { DocumentEdits } from "@/lib/document-edits";
+import { applyDocumentEdits, type DocumentEdits } from "@/lib/document-edits";
 import { packageDocNames, packageFormFields } from "@/lib/package-form-fields";
 import { formatUSD, type TaxResult } from "@/lib/tax";
 import { useCallback, useMemo, useState } from "react";
 import type { DeedForm } from "./IntakeForm";
 import { NJPackageView } from "./NJPackageView";
 import { Pill } from "./Chrome";
-import { PackageDocEditor } from "./PackageDocEditor";
+import { PackageDocPanel } from "./PackageDocPanel";
+import { PackagePdfActions } from "./PackagePdfActions";
 
 function Column({
   title,
@@ -45,17 +45,15 @@ function Column({
 export function PackageView({
   state,
   form,
-  onRestart,
 }: {
   state: StateInfo;
   form: DeedForm;
-  onRestart: () => void;
 }) {
   if (state.code === "NJ") {
-    return <NJPackageView form={form} onRestart={onRestart} />;
+    return <NJPackageView form={form} />;
   }
 
-  return <GenericPackageView state={state} form={form} onRestart={onRestart} />;
+  return <GenericPackageView state={state} form={form} />;
 }
 
 function useDocumentEditsState() {
@@ -69,11 +67,9 @@ function useDocumentEditsState() {
 function GenericPackageView({
   state,
   form,
-  onRestart,
 }: {
   state: StateInfo;
   form: DeedForm;
-  onRestart: () => void;
 }) {
   const { loading, result } = usePackageCompute(state.code, form);
   const tax: TaxResult =
@@ -91,20 +87,26 @@ function GenericPackageView({
 
   const docs = useMemo(() => packageDocNames(tax), [tax]);
   const [active, setActive] = useState("DEED");
+  const { edits, setEdit } = useDocumentEditsState();
+  const mergedForm = useMemo(() => applyDocumentEdits(form, edits), [form, edits]);
+  const previewPayload = useMemo(
+    () => deedFormToFillPayload(state.code, form, edits),
+    [state.code, form, edits],
+  );
 
-  const address = [form.house, form.street].filter(Boolean).join(" ");
-  const fullAddress = [address, form.city].filter(Boolean).join(", ");
+  const address = [mergedForm.house, mergedForm.street].filter(Boolean).join(" ");
+  const fullAddress = [address, mergedForm.city].filter(Boolean).join(", ");
 
   const confirmed = [
-    `County / recording jurisdiction: ${form.county}`,
+    `County / recording jurisdiction: ${mergedForm.county}`,
     `Property address: ${fullAddress || "— not entered —"}`,
-    `Deed type: ${form.deedType} deed`,
-    `Grantee type: ${form.granteeType}`,
-    form.nominal
+    `Deed type: ${mergedForm.deedType} deed`,
+    `Grantee type: ${mergedForm.granteeType}`,
+    mergedForm.nominal
       ? "Consideration: nominal / gift"
-      : `Consideration: ${formatUSD(Number(form.consideration || 0))}`,
+      : `Consideration: ${formatUSD(Number(mergedForm.consideration || 0))}`,
     `Tax computation: ${formatUSD(tax.total)} to ${tax.authority}`,
-    form.parcel ? `Parcel / folio #: ${form.parcel}` : "",
+    mergedForm.parcel ? `Parcel / folio #: ${mergedForm.parcel}` : "",
   ].filter(Boolean) as string[];
 
   const verify = [
@@ -119,39 +121,25 @@ function GenericPackageView({
   ];
 
   const missing = [
-    !form.granteeName && "New grantee name(s)",
-    !form.date && "Date of conveyance",
-    !form.preparedByName && "Prepared by — name",
-    !form.preparedByAddress && "Prepared by — address",
-    !form.owner && "Grantor (owner of record)",
-    !form.nominal && !form.consideration && "Sale price amount",
+    !mergedForm.granteeName && "New grantee name(s)",
+    !mergedForm.date && "Date of conveyance",
+    !mergedForm.preparedByName && "Prepared by — name",
+    !mergedForm.preparedByAddress && "Prepared by — address",
+    !mergedForm.owner && "Grantor (owner of record)",
+    !mergedForm.nominal && !mergedForm.consideration && "Sale price amount",
+    mergedForm.granteeType.toLowerCase().includes("trust") &&
+      !mergedForm.trusteeAddress &&
+      "Trustee address (grantee is a trust)",
   ].filter(Boolean) as string[];
 
   const flags = [...tax.flags];
-  if (form.deedType === "Quitclaim")
+  if (mergedForm.deedType === "Quitclaim")
     flags.push(
       "Quitclaim deed selected — it conveys only whatever interest the grantor holds, with no title warranty. Confirm this is intended.",
     );
 
-  const [busyPdf, setBusyPdf] = useState(false);
-  const [pdfMsg, setPdfMsg] = useState<string | null>(null);
-  const { edits, setEdit } = useDocumentEditsState();
-
   const activeMeta = tax.docs.find((d) => d.name === active);
-  const activeFields = packageFormFields(state.code, active, form, tax);
-
-  async function dlPdf() {
-    setBusyPdf(true);
-    setPdfMsg(null);
-    try {
-      const payload = deedFormToFillPayload(state.code, form, edits);
-      await downloadPackagePdf(payload, fillPdfFilename(state.code, form));
-    } catch (e) {
-      setPdfMsg(e instanceof Error ? e.message : "PDF generation failed.");
-    } finally {
-      setBusyPdf(false);
-    }
-  }
+  const activeFields = packageFormFields(state.code, active, mergedForm, tax);
 
   return (
     <div className="space-y-6">
@@ -159,33 +147,14 @@ function GenericPackageView({
         <div>
           <h2 className="font-display text-4xl text-foreground">Prepared package</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {fullAddress || "Property address not entered"} · {form.county} · {state.name}
+            {fullAddress || "Property address not entered"} · {mergedForm.county} · {state.name}
           </p>
         </div>
-        <div className="no-print flex gap-3">
-          <button
-            type="button"
-            onClick={dlPdf}
-            disabled={busyPdf}
-            className="cursor-pointer rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-wait disabled:opacity-70"
-          >
-            {busyPdf ? "Building…" : "⬇ Complete package (PDF)"}
-          </button>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="cursor-pointer rounded-sm border border-input bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary"
-          >
-            ⤓ Print
-          </button>
-        </div>
+        <PackagePdfActions
+          buildPayload={() => deedFormToFillPayload(state.code, form, edits)}
+          filename={fillPdfFilename(state.code, form)}
+        />
       </div>
-
-      {pdfMsg && (
-        <p className="rounded-sm border border-warning/50 bg-warning/10 px-3 py-2 text-xs text-warning">
-          {pdfMsg}
-        </p>
-      )}
 
       {loading && (
         <p className="text-sm text-muted-foreground">Computing transfer tax and required forms…</p>
@@ -264,15 +233,14 @@ function GenericPackageView({
           </div>
         </div>
 
-        <div className="rounded-sm border border-border bg-card p-6">
-          <PackageDocEditor
-            docName={active}
-            {...(activeMeta?.note ? { docNote: activeMeta.note } : {})}
-            fields={activeFields}
-            edits={edits}
-            onEdit={setEdit}
-          />
-        </div>
+        <PackageDocPanel
+          docName={active}
+          {...(activeMeta?.note ? { docNote: activeMeta.note } : {})}
+          fields={activeFields}
+          edits={edits}
+          onEdit={setEdit}
+          previewPayload={previewPayload}
+        />
       </div>
 
       <p className="text-xs leading-relaxed text-muted-foreground">
@@ -283,13 +251,6 @@ function GenericPackageView({
         ; recording amounts are collected by the {tax.authority}; parcel facts are best-effort from
         public open data. This package is illustrative and <strong>not recording-ready</strong>.
       </p>
-
-      <button
-        onClick={onRestart}
-        className="no-print rounded-sm border border-input bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary"
-      >
-        ↺ Start over / change inputs
-      </button>
     </div>
   );
 }

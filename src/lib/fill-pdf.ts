@@ -21,13 +21,38 @@ function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export async function downloadPackagePdf(
-  payload: FillPdfRequest,
-  filename: string,
-): Promise<void> {
+export async function fetchPackagePdfBlob(payload: FillPdfRequest): Promise<Blob> {
   const { pdfBase64 } = await invokeEdgeFunction<{ pdfBase64: string }>(
     "fetch-package-pdf",
     payload,
   );
-  triggerDownload(base64ToBlob(pdfBase64, "application/pdf"), filename);
+  return base64ToBlob(pdfBase64, "application/pdf");
+}
+
+export async function downloadPackagePdf(
+  payload: FillPdfRequest,
+  filename: string,
+): Promise<void> {
+  const blob = await fetchPackagePdfBlob(payload);
+  triggerDownload(blob, filename);
+}
+
+export function printPackagePdfBlob(blob: Blob): void {
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (!win) {
+    URL.revokeObjectURL(url);
+    throw new Error("Pop-up blocked. Allow pop-ups to print the package PDF.");
+  }
+  const tryPrint = () => {
+    try {
+      win.focus();
+      win.print();
+    } catch {
+      /* PDF viewer may not be ready yet */
+    }
+  };
+  win.addEventListener("load", tryPrint);
+  setTimeout(tryPrint, 1500);
+  setTimeout(() => URL.revokeObjectURL(url), 120_000);
 }

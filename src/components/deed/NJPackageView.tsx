@@ -4,12 +4,13 @@ import { Pill } from "./Chrome";
 import { usePackageCompute } from "@/hooks/use-package-compute";
 import type { NjDoc, NjReview } from "@/lib/nj/types";
 import { formToNjParcel } from "@/lib/nj/forms";
-import { downloadPackagePdf } from "@/lib/fill-pdf";
 import { deedFormToNjFillPayload, njPdfFilename } from "@/lib/fill-pdf-mappers";
 import type { DocumentEdits } from "@/lib/document-edits";
+import { applyDocumentEdits } from "@/lib/document-edits";
 import { njTaxToGeneric, packageFormFields } from "@/lib/package-form-fields";
 import { formatUSD } from "@/lib/tax";
-import { PackageDocEditor } from "./PackageDocEditor";
+import { PackageDocPanel } from "./PackageDocPanel";
+import { PackagePdfActions } from "./PackagePdfActions";
 
 function DocBadge({ status }: { status: string }) {
   if (status === "REQUIRED") return <Pill tone="info">REQUIRED</Pill>;
@@ -62,13 +63,7 @@ function ReviewPanel({ review }: { review: NjReview }) {
   );
 }
 
-export function NJPackageView({
-  form,
-  onRestart,
-}: {
-  form: DeedForm;
-  onRestart: () => void;
-}) {
+export function NJPackageView({ form }: { form: DeedForm }) {
   const { loading, result } = usePackageCompute("NJ", form);
   const parcel = useMemo(() => formToNjParcel(form), [form]);
 
@@ -81,32 +76,19 @@ export function NJPackageView({
       : { confirmed: [], verify: [], provide: [], flags: [] };
 
   const [active, setActive] = useState("DEED");
-  const [busyPdf, setBusyPdf] = useState(false);
-  const [pdfMsg, setPdfMsg] = useState<string | null>(null);
   const [edits, setEdits] = useState<DocumentEdits>({});
   const setEdit = useCallback((key: string, value: string) => {
     setEdits((prev) => ({ ...prev, [key]: value }));
   }, []);
+  const mergedForm = useMemo(() => applyDocumentEdits(form, edits), [form, edits]);
+  const previewPayload = useMemo(() => deedFormToNjFillPayload(form, edits), [form, edits]);
 
   const realForms = docs
     .filter((d) => ["RTF-1", "RTF-1EE", "GIT/REP-1", "GIT/REP-3"].some((c) => d.code.startsWith(c)))
     .map((d) => d.code);
 
   const activeDoc = docs.find((d) => d.code === active);
-  const activeFields = packageFormFields("NJ", active, form, tax, njTax);
-
-  async function dlPdf() {
-    setBusyPdf(true);
-    setPdfMsg(null);
-    try {
-      const payload = deedFormToNjFillPayload(form, edits);
-      await downloadPackagePdf(payload, njPdfFilename(parcel));
-    } catch (e) {
-      setPdfMsg(e instanceof Error ? e.message : "PDF generation failed.");
-    } finally {
-      setBusyPdf(false);
-    }
-  }
+  const activeFields = packageFormFields("NJ", active, mergedForm, tax, njTax);
 
   return (
     <div className="space-y-6">
@@ -115,23 +97,10 @@ export function NJPackageView({
         <span className="text-sm text-muted-foreground">
           {parcel.number} {parcel.street}, {parcel.municipality} · {parcel.county} Co., NJ
         </span>
-        <div className="no-print ml-auto flex gap-3">
-          <button
-            type="button"
-            onClick={dlPdf}
-            disabled={busyPdf}
-            className="cursor-pointer rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-wait disabled:opacity-70"
-          >
-            {busyPdf ? "Building…" : "⬇ Complete package (PDF)"}
-          </button>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="cursor-pointer rounded-sm border border-input bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary"
-          >
-            ⤓ Print
-          </button>
-        </div>
+        <PackagePdfActions
+          buildPayload={() => deedFormToNjFillPayload(form, edits)}
+          filename={njPdfFilename(parcel)}
+        />
       </div>
 
       <p className="rounded-sm border-l-4 border-info bg-info/5 px-4 py-3 text-[13px] leading-relaxed text-foreground">
@@ -139,11 +108,6 @@ export function NJPackageView({
         {realForms.length ? realForms.join(", ") : "GIT/REP forms"}, cover sheets, and tax summary.
         Edit highlighted fields below; they are merged into the PDF payload on download.
       </p>
-      {pdfMsg && (
-        <p className="rounded-sm border border-warning/50 bg-warning/10 px-3 py-2 text-xs text-warning">
-          {pdfMsg}
-        </p>
-      )}
 
       {loading && (
         <p className="text-sm text-muted-foreground">Computing NJ transfer fees and required forms…</p>
@@ -199,19 +163,18 @@ export function NJPackageView({
           </div>
         </div>
 
-        <div className="rounded-sm border border-border bg-card p-6">
-          <PackageDocEditor
-            docName={activeDoc?.code ?? active}
-            docNote={
-              activeDoc
-                ? `${activeDoc.reason}${activeDoc.source ? ` · ${activeDoc.source}` : ""}`
-                : undefined
-            }
-            fields={activeFields}
-            edits={edits}
-            onEdit={setEdit}
-          />
-        </div>
+        <PackageDocPanel
+          docName={activeDoc?.code ?? active}
+          docNote={
+            activeDoc
+              ? `${activeDoc.reason}${activeDoc.source ? ` · ${activeDoc.source}` : ""}`
+              : undefined
+          }
+          fields={activeFields}
+          edits={edits}
+          onEdit={setEdit}
+          previewPayload={previewPayload}
+        />
       </div>
 
       <p className="text-xs leading-relaxed text-muted-foreground">
@@ -219,14 +182,6 @@ export function NJPackageView({
         from the recorded deed of record. Generated documents are illustrative drafts for attorney/title
         review — not legal advice, not recording-ready.
       </p>
-
-      <button
-        type="button"
-        onClick={onRestart}
-        className="no-print rounded-sm border border-input bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary"
-      >
-        ↺ Start over / change inputs
-      </button>
     </div>
   );
 }

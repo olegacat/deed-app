@@ -99,6 +99,7 @@ function formToBaseParcel(form: DeedForm, stateCode: string) {
     acres: form.acres ? Number(form.acres) : null,
     residential: form.singleFamily,
     priorBookPage: form.deedBook && form.deedPage ? `${form.deedBook} ${form.deedPage}` : null,
+    legalDescription: form.legalDescription || null,
     mailing: form.mailingZip ? { zip: form.mailingZip, line: "", city: "", state: "" } : undefined,
   };
 }
@@ -123,6 +124,7 @@ export function deedFormToNjFillPayload(form: DeedForm, edits?: DocumentEdits): 
       ...parcel,
       state: "NJ",
       town: parcel.town || parcel.municipality,
+      legalDescription: merged.legalDescription || null,
     },
   };
 }
