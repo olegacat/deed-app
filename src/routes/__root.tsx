@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { completeOAuthReturn, useSession } from "../lib/session";
 
 function NotFoundComponent() {
   return (
@@ -123,11 +124,20 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+function AuthReturnGate() {
+  useSession();
+  useEffect(() => {
+    void completeOAuthReturn();
+  }, []);
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
+      <AuthReturnGate />
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
     </QueryClientProvider>

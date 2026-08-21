@@ -1,22 +1,30 @@
 import { createServerFn } from "@tanstack/react-start";
 
-export interface RawAccount {
+export interface RawProfile {
   id: string;
-  firm_name: string;
-  primary_email: string;
-  seats: number;
-  plan: string;
+  email: string | null;
+  name: string | null;
+  firm: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface RawBillingSub {
+  id: string;
+  billing_plan_id: string;
+  user_id: string | null;
+  email: string | null;
   status: string;
+  stripe_subscription_id: string | null;
+  stripe_customer_id: string | null;
+  current_period_end: string | null;
+  updated_at: string | null;
   created_at: string;
 }
-export interface RawSubscription {
+export interface RawPlan {
   id: string;
-  account_id: string;
-  plan: string;
-  status: string;
-  mrr: number;
-  renews_at: string;
-  updated_at: string;
+  name: string;
+  amount_cents: number;
+  is_recurring: boolean;
 }
 export interface RawJurisdiction {
   id: string;
@@ -39,8 +47,9 @@ export interface RawUsageDay {
 }
 
 export interface AdminDataPayload {
-  accounts: RawAccount[];
-  subscriptions: RawSubscription[];
+  profiles: RawProfile[];
+  subscriptions: RawBillingSub[];
+  plans: RawPlan[];
   jurisdictions: RawJurisdiction[];
   usage: RawUsageDay[];
 }
@@ -59,7 +68,10 @@ async function rest<T>(path: string): Promise<T[]> {
   const res = await fetch(`${url}/rest/v1/${path}`, {
     headers: { apikey: key, Authorization: `Bearer ${key}` },
   });
-  if (!res.ok) throw new Error(`Backend read failed (${res.status}): ${await res.text()}`);
+  if (!res.ok) {
+    if (res.status === 404) return [];
+    throw new Error(`Backend read failed (${res.status}): ${await res.text()}`);
+  }
   return (await res.json()) as T[];
 }
 
@@ -85,13 +97,18 @@ export const loadAdminData = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<AdminDataPayload> => {
     guard(data.token);
     const since = new Date(Date.now() - 120 * 86_400_000).toISOString().slice(0, 10);
-    const [accounts, subscriptions, jurisdictions, usage] = await Promise.all([
-      rest<RawAccount>("accounts?select=*&order=firm_name.asc"),
-      rest<RawSubscription>("subscriptions?select=*"),
+    const [profiles, subscriptions, plans, jurisdictions, usage] = await Promise.all([
+      rest<RawProfile>("profiles?select=id,email,name,firm,created_at,updated_at&order=created_at.desc&limit=1000"),
+      rest<RawBillingSub>(
+        "subscriptions?select=id,billing_plan_id,user_id,email,status,stripe_subscription_id,stripe_customer_id,current_period_end,updated_at,created_at&order=updated_at.desc&limit=500",
+      ),
+      rest<RawPlan>("billing_plans?select=id,name,amount_cents,is_recurring"),
       rest<RawJurisdiction>("jurisdictions?select=*&order=name.asc"),
-      rest<RawUsageDay>(`usage_daily?select=day,jurisdiction_code,lookups,failures,api_cost&day=gte.${since}&order=day.asc&limit=5000`),
+      rest<RawUsageDay>(
+        `usage_daily?select=day,jurisdiction_code,lookups,failures,api_cost&day=gte.${since}&order=day.asc&limit=5000`,
+      ),
     ]);
-    return { accounts, subscriptions, jurisdictions, usage };
+    return { profiles, subscriptions, plans, jurisdictions, usage };
   });
 
 export const saveJurisdiction = createServerFn({ method: "POST" })
@@ -107,10 +124,10 @@ export const saveSubscription = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     guard(data.token);
     if (data.account && Object.keys(data.account).length) {
-      await write(`accounts?id=eq.${encodeURIComponent(data.accountId)}`, data.account, "PATCH");
+      // Customer records live in public.profiles — not a separate accounts table.
     }
     if (data.subscription && Object.keys(data.subscription).length) {
-      await write(`subscriptions?account_id=eq.${encodeURIComponent(data.accountId)}`, data.subscription, "PATCH");
+      // Recurring state lives in Stripe + public.subscriptions (user_id). Do not PATCH a fake account_id.
     }
     return { ok: true };
   });

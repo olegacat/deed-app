@@ -47,7 +47,7 @@ export function AccountShell({
             activeProps={{ className: `${navLink} bg-sidebar-accent !text-sidebar-foreground` }}
           >
             <FileText className="h-3.5 w-3.5" />
-            Saved deeds
+            My packages
           </Link>
           <Link
             to="/account/settings"

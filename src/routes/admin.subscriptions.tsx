@@ -45,16 +45,17 @@ function Subscriptions() {
   const [plan, setPlan] = useState<PlanTier>("professional");
   const [cancelMode, setCancelMode] = useState<"period_end" | "immediate">("period_end");
 
+  const billed = accounts.filter((a) => Boolean(a.stripeSubId));
   const rows = useMemo(() => {
-    return accounts
+    return billed
       .filter((a) => (status === "all" ? true : a.status === status))
       .filter((a) => `${a.firm} ${a.email} ${a.id} ${a.stripeSubId}`.toLowerCase().includes(q.toLowerCase()))
       .sort((a, b) =>
         sort === "mrr" ? mrrOf(b) - mrrOf(a) : new Date(a.renewalDate).getTime() - new Date(b.renewalDate).getTime(),
       );
-  }, [accounts, q, status, sort]);
+  }, [billed, q, status, sort]);
 
-  const pastDue = accounts.filter((a) => a.status === "past_due");
+  const pastDue = billed.filter((a) => a.status === "past_due");
   const atRisk = pastDue.reduce((s, a) => s + mrrOf(a), 0);
 
   function open(kind: ActionKind, account: Account) {
@@ -93,7 +94,7 @@ function Subscriptions() {
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-sm border border-border bg-card p-4">
           <p className="text-xs uppercase tracking-wider text-muted-foreground">Subscriptions</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{accounts.length}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{billed.length}</p>
         </div>
         <button onClick={() => setStatus("past_due")} className="rounded-sm border border-destructive/40 bg-destructive/10 p-4 text-left">
           <p className="text-xs uppercase tracking-wider text-destructive">Past due right now</p>

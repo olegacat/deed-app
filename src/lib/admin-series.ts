@@ -19,7 +19,7 @@ function rnd(seed: number) {
  * account count and MRR, so the charts agree with the dashboard tiles.
  */
 export function buildSeries(accounts: Account[], days: number): SeriesPoint[] {
-  const usersNow = accounts.filter((a) => a.status !== "canceled").length;
+  const usersNow = accounts.length;
   const mrrNow = accounts.reduce((s, a) => s + mrrOf(a), 0);
   const step = days > 60 ? 3 : 1;
   const out: SeriesPoint[] = [];

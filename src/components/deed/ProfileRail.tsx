@@ -14,7 +14,7 @@ export function ProfileRail({
 }: {
   placement?: "top" | "bottom" | "header";
 }) {
-  const { user, deeds } = useSession();
+  const { user, deeds, planLabel } = useSession();
   const navigate = useNavigate();
   const header = placement === "header";
   const top = placement === "top" || header;
@@ -104,6 +104,9 @@ export function ProfileRail({
               {user.email}
               {user.provider === "google" && " · Google"}
             </p>
+            <p className="truncate text-[10px] font-bold uppercase tracking-[0.16em] text-accent">
+              {planLabel}
+            </p>
           </div>
         )}
         <ChevronsUpDown
@@ -117,16 +120,17 @@ export function ProfileRail({
             header ? "right-0 top-full mt-2 w-[280px]" : "left-0 w-full"
           } ${top ? "top-full mt-2" : "bottom-full mb-2"}`}
         >
-          {header && (
-            <div className="mb-1 border-b border-sidebar-border px-3 py-2">
-              <p className="truncate text-[12px] font-medium text-sidebar-foreground">{user.name}</p>
-              <p className="truncate text-[11px] text-sidebar-foreground/45">{user.email}</p>
-            </div>
-          )}
+          <div className="mb-1 border-b border-sidebar-border px-3 py-2">
+            <p className="truncate text-[12px] font-medium text-sidebar-foreground">{user.name}</p>
+            <p className="truncate text-[11px] text-sidebar-foreground/45">{user.email}</p>
+            <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.16em] text-accent">
+              {planLabel}
+            </p>
+          </div>
           <div className="space-y-0.5">
             {row(
               <FileText className="h-3.5 w-3.5" />,
-              "Saved deeds",
+              "My packages",
               () => {
                 setOpen(false);
                 navigate({ to: "/account/saved" });

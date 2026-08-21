@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
+import { ProfileRail } from "@/components/deed/ProfileRail";
 import { STATES } from "@/data/states";
 
 const TITLE = "Deed Copilot — evidence-backed deed & recording prep for law firms";
@@ -211,12 +212,15 @@ function Landing() {
               </a>
             ))}
           </div>
-          <Link
-            to="/states"
-            className="ml-auto inline-flex items-center gap-2 rounded-sm bg-primary px-5 py-2.5 text-[11px] font-bold uppercase tracking-[0.18em] text-primary-foreground transition-all hover:bg-accent md:ml-0"
-          >
-            Try a deed <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
+          <div className="ml-auto flex items-center gap-3 md:ml-0">
+            <ProfileRail placement="header" />
+            <Link
+              to="/states"
+              className="inline-flex items-center gap-2 rounded-sm bg-primary px-5 py-2.5 text-[11px] font-bold uppercase tracking-[0.18em] text-primary-foreground transition-all hover:bg-accent"
+            >
+              Try a deed <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         </nav>
       </header>
 

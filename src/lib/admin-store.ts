@@ -94,12 +94,6 @@ const KEY = "deed-copilot-admin";
 
 /* ---------------------------------------------------------------- mapping */
 
-function toPlan(v: string): PlanTier {
-  const s = v.toLowerCase();
-  if (s === "firm" || s === "enterprise") return "firm";
-  if (s === "pro" || s === "professional") return "professional";
-  return "starter";
-}
 function fromPlan(p: PlanTier): string {
   return p === "professional" ? "pro" : p;
 }
@@ -162,7 +156,7 @@ export async function refreshAdminData() {
   set({ loading: true, error: null });
   try {
     const payload = await loadAdminData({ data: { token: ADMIN_PASSWORD } });
-    const subByAccount = new Map(payload.subscriptions.map((s) => [s.account_id, s]));
+    const planById = new Map(payload.plans.map((p) => [p.id, p]));
 
     const usage: UsageDay[] = payload.usage.map((u) => ({
       day: u.day,
@@ -178,26 +172,44 @@ export async function refreshAdminData() {
       failureByCode.set(u.code, { l: cur.l + u.lookups, f: cur.f + u.failures });
     });
 
-    const accounts: Account[] = payload.accounts.map((a) => {
-      const sub = subByAccount.get(a.id);
-      const plan = toPlan(sub?.plan ?? a.plan);
-      const status = toStatus(sub?.status ?? a.status);
-      const mrr = Number(sub?.mrr ?? 0);
+    const liveSub = (email: string, id: string) => {
+      const needle = email.toLowerCase();
+      const mine = payload.subscriptions.filter(
+        (s) => s.user_id === id || (needle && s.email?.toLowerCase() === needle),
+      );
+      return (
+        mine.find((s) => s.status === "active" || s.status === "trialing" || s.status === "past_due") ??
+        null
+      );
+    };
+
+    const accounts: Account[] = payload.profiles.map((p) => {
+      const email = p.email ?? "";
+      const sub = liveSub(email, p.id);
+      const planRow = sub ? planById.get(sub.billing_plan_id) : undefined;
+      const recurring = Boolean(planRow?.is_recurring);
+      const mrr = recurring && (sub?.status === "active" || sub?.status === "past_due")
+        ? (planRow?.amount_cents ?? 0) / 100
+        : 0;
+      const plan: PlanTier = recurring
+        ? (planRow?.name.toLowerCase().includes("firm") ? "firm" : "professional")
+        : "starter";
+      const status = sub ? toStatus(sub.status === "trialing" ? "trial" : sub.status) : "canceled";
       return {
-        id: a.id,
-        firm: a.firm_name,
-        email: a.primary_email,
+        id: p.id,
+        firm: p.firm || p.name || email || "—",
+        email,
         plan,
         status,
-        seats: a.seats ?? 0,
+        seats: 1,
         mrr,
         deedsUsed: 0,
-        renewalDate: sub?.renews_at ?? a.created_at,
-        stripeSubId: sub?.id ?? "—",
-        stripeCustomerId: a.id,
+        renewalDate: sub?.current_period_end ?? p.created_at,
+        stripeSubId: sub?.stripe_subscription_id ?? "",
+        stripeCustomerId: sub?.stripe_customer_id ?? "",
         lastPayment: {
           result: status === "past_due" ? "failed" : "success",
-          date: sub?.updated_at ?? a.created_at,
+          date: sub?.updated_at ?? p.updated_at,
           amount: mrr,
         },
         notes: [],
@@ -342,7 +354,7 @@ export function updateAccount(id: string, patch: Partial<Account>, note?: string
 /* --------------------------------------------------------------- derived */
 
 export function mrrOf(a: Account) {
-  if (a.status === "active" || a.status === "past_due") return a.mrr || PLAN_PRICE[a.plan];
+  if (a.status === "active" || a.status === "past_due") return a.mrr;
   return 0;
 }
 

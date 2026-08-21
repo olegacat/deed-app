@@ -17,6 +17,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminAccountsRouteImport } from './routes/admin.accounts'
 import { Route as AdminJurisdictionsRouteImport } from './routes/admin.jurisdictions'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
+import { Route as AdminOrdersRouteImport } from './routes/admin.orders'
 import { Route as AdminPlansRouteImport } from './routes/admin.plans'
 import { Route as AdminSubscriptionsRouteImport } from './routes/admin.subscriptions'
 import { Route as AdminUsageRouteImport } from './routes/admin.usage'
@@ -63,6 +64,11 @@ const AdminLoginRoute = AdminLoginRouteImport.update({
   path: '/admin/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminOrdersRoute = AdminOrdersRouteImport.update({
+  id: '/admin/orders',
+  path: '/admin/orders',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminPlansRoute = AdminPlansRouteImport.update({
   id: '/admin/plans',
   path: '/admin/plans',
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/admin/accounts': typeof AdminAccountsRoute
   '/admin/jurisdictions': typeof AdminJurisdictionsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/orders': typeof AdminOrdersRoute
   '/admin/plans': typeof AdminPlansRoute
   '/admin/subscriptions': typeof AdminSubscriptionsRoute
   '/admin/usage': typeof AdminUsageRoute
@@ -112,6 +119,7 @@ export interface FileRoutesByTo {
   '/admin/accounts': typeof AdminAccountsRoute
   '/admin/jurisdictions': typeof AdminJurisdictionsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/orders': typeof AdminOrdersRoute
   '/admin/plans': typeof AdminPlansRoute
   '/admin/subscriptions': typeof AdminSubscriptionsRoute
   '/admin/usage': typeof AdminUsageRoute
@@ -128,6 +136,7 @@ export interface FileRoutesById {
   '/admin/accounts': typeof AdminAccountsRoute
   '/admin/jurisdictions': typeof AdminJurisdictionsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/orders': typeof AdminOrdersRoute
   '/admin/plans': typeof AdminPlansRoute
   '/admin/subscriptions': typeof AdminSubscriptionsRoute
   '/admin/usage': typeof AdminUsageRoute
@@ -145,6 +154,7 @@ export interface FileRouteTypes {
     | '/admin/accounts'
     | '/admin/jurisdictions'
     | '/admin/login'
+    | '/admin/orders'
     | '/admin/plans'
     | '/admin/subscriptions'
     | '/admin/usage'
@@ -160,6 +170,7 @@ export interface FileRouteTypes {
     | '/admin/accounts'
     | '/admin/jurisdictions'
     | '/admin/login'
+    | '/admin/orders'
     | '/admin/plans'
     | '/admin/subscriptions'
     | '/admin/usage'
@@ -175,6 +186,7 @@ export interface FileRouteTypes {
     | '/admin/accounts'
     | '/admin/jurisdictions'
     | '/admin/login'
+    | '/admin/orders'
     | '/admin/plans'
     | '/admin/subscriptions'
     | '/admin/usage'
@@ -191,6 +203,7 @@ export interface RootRouteChildren {
   AdminAccountsRoute: typeof AdminAccountsRoute
   AdminJurisdictionsRoute: typeof AdminJurisdictionsRoute
   AdminLoginRoute: typeof AdminLoginRoute
+  AdminOrdersRoute: typeof AdminOrdersRoute
   AdminPlansRoute: typeof AdminPlansRoute
   AdminSubscriptionsRoute: typeof AdminSubscriptionsRoute
   AdminUsageRoute: typeof AdminUsageRoute
@@ -257,6 +270,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/orders': {
+      id: '/admin/orders'
+      path: '/admin/orders'
+      fullPath: '/admin/orders'
+      preLoaderRoute: typeof AdminOrdersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/plans': {
       id: '/admin/plans'
       path: '/admin/plans'
@@ -303,6 +323,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminAccountsRoute: AdminAccountsRoute,
   AdminJurisdictionsRoute: AdminJurisdictionsRoute,
   AdminLoginRoute: AdminLoginRoute,
+  AdminOrdersRoute: AdminOrdersRoute,
   AdminPlansRoute: AdminPlansRoute,
   AdminSubscriptionsRoute: AdminSubscriptionsRoute,
   AdminUsageRoute: AdminUsageRoute,

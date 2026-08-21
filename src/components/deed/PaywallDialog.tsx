@@ -1,7 +1,7 @@
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
 import { X } from "lucide-react";
 import { getStripe } from "@/lib/stripe";
-import { createCheckoutSession } from "@/utils/payments.functions";
+import { invokeEdgeFunction } from "@/lib/supabase-edge";
 
 export function PaywallDialog({
   open,
@@ -23,15 +23,13 @@ export function PaywallDialog({
   if (!open) return null;
 
   const fetchClientSecret = async (): Promise<string> => {
-    const result = await createCheckoutSession({
-      data: {
-        plan,
-        ...(email ? { customerEmail: email } : {}),
-        ...(userId ? { userId } : {}),
-        returnUrl: `${window.location.href.split("?")[0]}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-      },
+    const result = await invokeEdgeFunction<{ clientSecret?: string; error?: string }>("stripe-checkout", {
+      plan,
+      returnUrl: `${window.location.href.split("?")[0]}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      ...(email ? { customerEmail: email } : {}),
+      ...(userId ? { userId } : {}),
     });
-    if ("error" in result) throw new Error(result.error);
+    if (result.error) throw new Error(result.error);
     if (!result.clientSecret) throw new Error("Payment could not be started.");
     return result.clientSecret;
   };

@@ -1,112 +1,187 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { AdminShell, Card, ConfirmDialog, Field, StatusPill, inputCls } from "@/components/admin/AdminShell";
-import {
-  PLAN_LABEL,
-  PLAN_PRICE,
-  PLAN_QUOTA,
-  STATUS_LABEL,
-  fmtDate,
-  fmtMoney,
-  updateAccount,
-  useAdminStore,
-  type Account,
-  type PlanTier,
-} from "@/lib/admin-store";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AdminShell, Card, StatusPill, inputCls } from "@/components/admin/AdminShell";
+import { formatPlanDisplayPrice } from "@/lib/billing-plans";
+import { ADMIN_HINT } from "@/lib/admin-store";
+import { loadProfilesAdmin, type AdminProfileAccount } from "@/lib/admin-billing.functions";
 
 export const Route = createFileRoute("/admin/accounts")({
   head: () => ({
     meta: [
       { title: "Account Lookup — Deed Copilot Internal" },
-      { name: "description", content: "Search a firm, user email or account ID and see plan, quota, payment status and overrides on one screen." },
+      {
+        name: "description",
+        content: "Customer accounts from profiles: email, firm, plan and deed packages.",
+      },
       { name: "robots", content: "noindex" },
       { property: "og:title", content: "Account Lookup — Deed Copilot Internal" },
-      { property: "og:description", content: "Internal single-account support view for Deed Copilot." },
+      { property: "og:description", content: "Internal lookup of Deed Copilot profiles." },
     ],
   }),
   component: Accounts,
 });
 
+function fmtWhen(at?: string | null) {
+  if (!at) return "—";
+  return new Date(at).toLocaleString();
+}
+
+function planLabel(a: AdminProfileAccount): string {
+  if (a.billingKind === "subscription" && a.planName) return a.planName;
+  return "trial";
+}
+
+function isAwaitingPayment(a: AdminProfileAccount): boolean {
+  if (a.billingKind !== "subscription") return false;
+  return (
+    a.billingStatus === "past_due" ||
+    a.billingStatus === "unpaid" ||
+    a.billingStatus === "incomplete" ||
+    a.billingStatus === "paused"
+  );
+}
+
+function billingPill(a: AdminProfileAccount): string {
+  if (isAwaitingPayment(a)) return "awaiting payment";
+  if (a.billingKind === "subscription" && a.billingStatus === "active") return "Active";
+  if (a.billingKind === "subscription" && a.billingStatus === "trialing") return "Trial";
+  if (planLabel(a) === "trial") return "Trial";
+  return "—";
+}
+
 function Accounts() {
-  const { accounts } = useAdminStore();
+  const [accounts, setAccounts] = useState<AdminProfileAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const results = q.trim()
-    ? accounts.filter((a) => `${a.firm} ${a.email} ${a.id}`.toLowerCase().includes(q.trim().toLowerCase()))
-    : accounts;
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const rows = await loadProfilesAdmin({ data: { token: ADMIN_HINT.password } });
+      setAccounts(rows);
+      setOpenId((prev) => {
+        if (prev && rows.some((r) => r.id === prev)) return prev;
+        return rows[0]?.id ?? null;
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load profiles.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (!openId && results.length > 0) setOpenId(results[0]?.id ?? null);
-  }, [results, openId]);
+    void refresh();
+  }, [refresh]);
+
+  const results = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return accounts;
+    return accounts.filter((a) =>
+      `${a.firm} ${a.name} ${a.email} ${a.id} ${a.planName ?? ""}`.toLowerCase().includes(needle),
+    );
+  }, [accounts, q]);
 
   const selected = accounts.find((a) => a.id === openId) ?? null;
 
   return (
-    <AdminShell title="Account lookup" subtitle="For answering one customer's question. For the daily ops list use Subscriptions.">
-      <div className={`grid items-start gap-3 ${selected ? "xl:grid-cols-[minmax(0,1fr)_420px]" : ""}`}>
-      <Card title="Search">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Firm name, user email or account ID…"
-          className={inputCls}
-        />
-        <table className="mt-3 w-full text-sm">
-          <thead>
-            <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
-              <th className="px-3 pb-2 font-medium">Firm</th>
-              <th className="px-3 pb-2 font-medium">Email</th>
-              <th className="px-3 pb-2 font-medium">Account ID</th>
-              <th className="px-3 pb-2 font-medium">Plan</th>
-              <th className="px-3 pb-2 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {results.map((a) => (
-              <tr
-                key={a.id}
-                onClick={() => setOpenId(a.id)}
-                className={`cursor-pointer transition-colors hover:bg-muted ${
-                  openId === a.id ? "bg-primary/10 shadow-[inset_2px_0_0_0_var(--color-primary)]" : ""
-                }`}
-              >
-                <td className="px-3 py-2 font-medium">{a.firm}</td>
-                <td className="px-3 py-2 text-muted-foreground">{a.email}</td>
-                <td className="px-3 py-2 tabular-nums">{a.id}</td>
-                <td className="px-3 py-2">{PLAN_LABEL[a.plan]}</td>
-                <td className="px-3 py-2"><StatusPill status={STATUS_LABEL[a.status]} /></td>
-              </tr>
-            ))}
-            {results.length === 0 ? (
-              <tr><td colSpan={5} className="py-4 text-center text-muted-foreground">No matching account.</td></tr>
-            ) : null}
-          </tbody>
-        </table>
-        {!selected ? (
-          <p className="mt-3 text-xs text-muted-foreground">Select a row to open the account detail panel.</p>
-        ) : null}
-      </Card>
-
-      {selected ? (
-        <div className="xl:sticky xl:top-28">
-          <AccountDetail a={selected} onClose={() => setOpenId(null)} />
-        </div>
+    <AdminShell
+      title="Account lookup"
+      subtitle="Rows from public.profiles — every signed-up user, with billing from orders / subscriptions."
+    >
+      {error ? (
+        <p className="mb-4 rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
       ) : null}
+
+      <div className={`grid items-start gap-3 ${selected ? "xl:grid-cols-[minmax(0,1fr)_420px]" : ""}`}>
+        <Card
+          title={loading ? "Search" : `Search (${results.length})`}
+          action={
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              className="rounded-sm border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+            >
+              Refresh
+            </button>
+          }
+        >
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Name, firm, email or profile ID…"
+            className={inputCls}
+          />
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 pb-2 font-medium">Name</th>
+                  <th className="px-3 pb-2 font-medium">Email</th>
+                  <th className="px-3 pb-2 font-medium">Firm</th>
+                  <th className="px-3 pb-2 font-medium">Plan</th>
+                  <th className="px-3 pb-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">
+                      Loading profiles…
+                    </td>
+                  </tr>
+                ) : results.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">
+                      No matching profile.
+                    </td>
+                  </tr>
+                ) : (
+                  results.map((a) => (
+                    <tr
+                      key={a.id}
+                      onClick={() => setOpenId(a.id)}
+                      className={`cursor-pointer transition-colors hover:bg-muted ${
+                        openId === a.id ? "bg-primary/10 shadow-[inset_2px_0_0_0_var(--color-primary)]" : ""
+                      }`}
+                    >
+                      <td className="px-3 py-2 font-medium">{a.name || "—"}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{a.email || "—"}</td>
+                      <td className="px-3 py-2">{a.firm || "—"}</td>
+                      <td className="px-3 py-2">{planLabel(a)}</td>
+                      <td className="px-3 py-2">
+                        <StatusPill status={billingPill(a)} />
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        {selected ? (
+          <div className="xl:sticky xl:top-28">
+            <AccountDetail a={selected} onClose={() => setOpenId(null)} />
+          </div>
+        ) : null}
       </div>
     </AdminShell>
   );
 }
 
-function AccountDetail({ a, onClose }: { a: Account; onClose: () => void }) {
-  const [overrideOpen, setOverrideOpen] = useState(false);
-  const quota = PLAN_QUOTA[a.plan];
-
+function AccountDetail({ a, onClose }: { a: AdminProfileAccount; onClose: () => void }) {
   return (
     <Card
-      title={a.firm}
+      title={a.firm || a.name || a.email || "Profile"}
       action={
         <button
+          type="button"
           onClick={onClose}
           aria-label="Close account detail"
           className="rounded-sm border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
@@ -116,148 +191,73 @@ function AccountDetail({ a, onClose }: { a: Account; onClose: () => void }) {
       }
     >
       <div className="mb-3 flex flex-wrap gap-2">
-        <button onClick={() => setOverrideOpen(true)} className="rounded-sm border border-border px-2.5 py-1.5 text-xs hover:bg-muted">
-          Manual override
-        </button>
-        <Link to="/admin/subscriptions" search={{ q: a.firm, status: "all" }} className="rounded-sm bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground">
-          Manage subscription →
+        <Link
+          to="/admin/orders"
+          className="rounded-sm bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground"
+        >
+          Orders & payments →
         </Link>
       </div>
 
-      <dl className="grid gap-4 sm:grid-cols-2 text-sm">
+      <dl className="grid gap-4 text-sm">
         <div>
-          <dt className="text-xs text-muted-foreground">Plan tier & status</dt>
-          <dd className="mt-1 flex items-center gap-2">
-            {PLAN_LABEL[a.plan]} <StatusPill status={STATUS_LABEL[a.status]} />
+          <dt className="text-xs text-muted-foreground">Name</dt>
+          <dd className="mt-1">{a.name || "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Email</dt>
+          <dd className="mt-1 break-all">{a.email || "—"}</dd>
+          <p className="mt-2 text-sm">
+            <span className="text-muted-foreground">Plan: </span>
+            {planLabel(a)}
+          </p>
+          {isAwaitingPayment(a) ? (
+            <p className="mt-1 text-sm text-destructive">awaiting payment</p>
+          ) : null}
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Deed packages</dt>
+          <dd className="mt-1 tabular-nums">
+            {a.paidDeedCount} paid · {a.deedCount} total
           </dd>
         </div>
         <div>
-          <dt className="text-xs text-muted-foreground">Deeds this billing period</dt>
-          <dd className="mt-1 tabular-nums">
-            {a.deedsUsed} / {quota}{" "}
-            {a.deedsUsed > quota ? <span className="text-destructive">over quota</span> : null}
-          </dd>
+          <dt className="text-xs text-muted-foreground">Orders</dt>
+          <dd className="mt-1 tabular-nums">{a.orderCount}</dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">Last payment</dt>
-          <dd className={`mt-1 ${a.lastPayment.result === "failed" ? "text-destructive" : ""}`}>
-            {a.lastPayment.result === "failed" ? "Failed" : "Success"} · {fmtMoney(a.lastPayment.amount)} · {fmtDate(a.lastPayment.date)}
+          <dd className="mt-1">
+            {a.lastPaidAt
+              ? `${a.lastPaidCents != null ? formatPlanDisplayPrice(a.lastPaidCents) : "—"} · ${fmtWhen(a.lastPaidAt)}`
+              : "—"}
           </dd>
         </div>
         <div>
-          <dt className="text-xs text-muted-foreground">Next renewal · MRR</dt>
-          <dd className="mt-1">{fmtDate(a.renewalDate)} · {fmtMoney(PLAN_PRICE[a.plan])}</dd>
+          <dt className="text-xs text-muted-foreground">Renewal</dt>
+          <dd className="mt-1">{fmtWhen(a.periodEnd)}</dd>
         </div>
         <div className="sm:col-span-2">
-          <dt className="text-xs text-muted-foreground">Account ID · Stripe subscription</dt>
-          <dd className="mt-1 break-all font-mono text-xs">{a.id} · {a.stripeSubId}</dd>
+          <dt className="text-xs text-muted-foreground">Profile ID</dt>
+          <dd className="mt-1 break-all font-mono text-xs">{a.id}</dd>
         </div>
-        {a.discountNote ? (
-          <div className="sm:col-span-2">
-            <dt className="text-xs text-muted-foreground">Active override</dt>
-            <dd className="mt-1">{a.discountNote}{a.compUntil ? ` (until ${fmtDate(a.compUntil)})` : ""}</dd>
-          </div>
-        ) : null}
+        <div className="sm:col-span-2">
+          <dt className="text-xs text-muted-foreground">Stripe</dt>
+          <dd className="mt-1 break-all font-mono text-xs">
+            {a.stripeCustomerId || a.stripeSubscriptionId
+              ? [a.stripeCustomerId, a.stripeSubscriptionId].filter(Boolean).join(" · ")
+              : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Created</dt>
+          <dd className="mt-1">{fmtWhen(a.createdAt)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Updated</dt>
+          <dd className="mt-1">{fmtWhen(a.updatedAt)}</dd>
+        </div>
       </dl>
-
-      {a.notes.length ? (
-        <div className="mt-4 border-t border-border pt-3">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Admin notes (audit trail)</p>
-          <ul className="space-y-1.5 text-xs">
-            {a.notes.map((n, i) => (
-              <li key={i} className="rounded-sm bg-muted/50 px-2 py-1.5">
-                <span className="text-muted-foreground">{new Date(n.at).toLocaleString()} · {n.by}</span>
-                <p className="mt-0.5">{n.text}</p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {overrideOpen ? <OverrideForm a={a} onClose={() => setOverrideOpen(false)} /> : null}
     </Card>
-  );
-}
-
-function OverrideForm({ a, onClose }: { a: Account; onClose: () => void }) {
-  const [plan, setPlan] = useState<PlanTier>(a.plan);
-  const [discount, setDiscount] = useState("");
-  const [compDays, setCompDays] = useState("0");
-  const [note, setNote] = useState("");
-  const [confirm, setConfirm] = useState(false);
-
-  const days = Number(compDays) || 0;
-
-  function apply() {
-    const parts: string[] = [];
-    if (plan !== a.plan) parts.push(`plan ${PLAN_LABEL[a.plan]} → ${PLAN_LABEL[plan]}`);
-    if (discount.trim()) parts.push(`discount: ${discount.trim()}`);
-    if (days > 0) parts.push(`comp period ${days} days`);
-    const patch: Partial<Account> = { plan };
-    const nextDiscount = discount.trim() || (days > 0 ? `${days}-day comp period` : a.discountNote);
-    if (nextDiscount) patch.discountNote = nextDiscount;
-    if (days > 0) patch.compUntil = new Date(Date.now() + days * 86_400_000).toISOString();
-    updateAccount(a.id, patch, `Manual override — ${parts.join("; ") || "no billing change"}. Reason: ${note.trim()}`);
-    setConfirm(false);
-    onClose();
-  }
-
-  return (
-    <div className="mt-4 rounded-sm border border-warning/50 bg-warning/10 p-4">
-      <p className="text-sm font-semibold">Manual plan override</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        Applies outside Stripe. The note is required and stored as the audit trail.
-      </p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <Field label="Plan tier">
-          <select value={plan} onChange={(e) => setPlan(e.target.value as PlanTier)} className={inputCls}>
-            {(["starter", "professional", "firm"] as PlanTier[]).map((p) => (
-              <option key={p} value={p}>{PLAN_LABEL[p]} — {fmtMoney(PLAN_PRICE[p])}/mo</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Temporary discount (e.g. 50% for 3 months)">
-          <input value={discount} onChange={(e) => setDiscount(e.target.value)} className={inputCls} />
-        </Field>
-        <Field label="Comp period (days)">
-          <input value={compDays} onChange={(e) => setCompDays(e.target.value)} inputMode="numeric" className={inputCls} />
-        </Field>
-      </div>
-      <div className="mt-3">
-        <Field label="Reason (required)">
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className={inputCls} placeholder="Why is this override being applied?" />
-        </Field>
-      </div>
-      <div className="mt-3 flex gap-2">
-        <button
-          onClick={() => setConfirm(true)}
-          disabled={!note.trim()}
-          className="rounded-sm bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
-        >
-          Review & apply
-        </button>
-        <button onClick={onClose} className="rounded-sm border border-border px-3 py-1.5 text-sm hover:bg-muted">Cancel</button>
-        {!note.trim() ? <span className="self-center text-xs text-muted-foreground">A reason is required.</span> : null}
-      </div>
-
-      <ConfirmDialog
-        open={confirm}
-        title="Apply manual override?"
-        confirmLabel="Apply override"
-        onCancel={() => setConfirm(false)}
-        onConfirm={apply}
-        body={
-          <>
-            <p>This changes real billing state for <strong>{a.firm}</strong>.</p>
-            <ul className="list-disc pl-5 text-sm text-muted-foreground">
-              <li>Plan: {PLAN_LABEL[a.plan]} → {PLAN_LABEL[plan]}</li>
-              <li>Discount: {discount.trim() || "none"}</li>
-              <li>Comp period: {days > 0 ? `${days} days` : "none"}</li>
-            </ul>
-            <p className="text-sm">Note: {note}</p>
-          </>
-        }
-      />
-    </div>
   );
 }

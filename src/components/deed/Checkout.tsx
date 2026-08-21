@@ -4,7 +4,6 @@ import type { StateInfo } from "@/data/states";
 import { Field, SectionHeader } from "./IntakeForm";
 import { signInWithGoogle, signInWithPassword, signUpWithPassword, signOut, useSession } from "@/lib/session";
 import { PaywallDialog } from "./PaywallDialog";
-import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
 
 export interface CheckoutData {
   plan: string;
@@ -108,7 +107,8 @@ export function Checkout({
   }, []);
 
   const emailOk = /.+@.+\..+/.test(data.email);
-  const canPay = emailOk && (!data.saveToAccount || data.signedIn || data.password.length >= 6);
+  const signedIn = Boolean(session.user);
+  const canPay = emailOk && signedIn;
 
   const pay = () => setPaywallOpen(true);
 
@@ -140,7 +140,6 @@ export function Checkout({
 
   return (
     <>
-    <PaymentTestModeBanner />
     <div className="grid gap-6 lg:grid-cols-[1.15fr_1fr]">
       <div className="space-y-8 rounded-sm border border-border bg-card p-6 lg:p-8">
         <div>
@@ -257,7 +256,7 @@ export function Checkout({
 
         {/* Account */}
         <section className="space-y-4">
-          <SectionHeader step="C" title="Save deeds to an account" note="Optional" />
+          <SectionHeader step="C" title="Sign in to continue" note="Required to pay" />
           <label className="flex items-start gap-3 rounded-sm border border-input bg-secondary/40 p-3">
             <input
               type="checkbox"
@@ -268,18 +267,17 @@ export function Checkout({
             <span className="text-[12.5px] leading-snug text-foreground">
               Keep this matter in my Deed Copilot account
               <span className="block text-[11px] text-muted-foreground">
-                Lets you reopen the package later from any device.
+                Progress is saved as you go — reopen this deed after refresh or sign-in.
               </span>
             </span>
           </label>
 
-          {data.saveToAccount &&
-            (data.signedIn ? (
+          {session.user || data.signedIn ? (
               <div className="flex items-center gap-3 rounded-sm border border-success/40 bg-success/10 p-3">
                 <ShieldCheck className="h-4 w-4 text-success" />
                 <p className="text-[12.5px] text-foreground">
-                  Signed in as <span className="font-semibold">{data.email || "you"}</span>
-                  {data.provider === "google" && " via Google"}.
+                  Signed in as <span className="font-semibold">{session.user?.email || data.email || "you"}</span>
+                  {(session.user?.provider ?? data.provider) === "google" && " via Google"}.
                   <button
                     type="button"
                     onClick={() => {
@@ -404,18 +402,18 @@ export function Checkout({
                   <p className="text-[12px] leading-snug text-success">{authNotice}</p>
                 ) : null}
               </div>
-            ))}
+            )}
         </section>
 
         {/* Payment */}
         <section className="space-y-4">
-          <SectionHeader step="D" title="Payment details" note="Test mode" />
+          <SectionHeader step="D" title="Payment details" />
           <div className="flex items-start gap-3 rounded-sm border border-input bg-secondary/40 p-4">
             <Lock className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
             <p className="text-[12.5px] leading-snug text-foreground">
               Card details are collected in a secure payment window.
               <span className="block text-[11px] text-muted-foreground">
-                Click “Pay {plan.displayPrice}” below to open it. Test mode card: 4242 4242 4242 4242.
+                Click “Pay {plan.displayPrice}” below to open it.
               </span>
             </p>
           </div>
@@ -439,6 +437,9 @@ export function Checkout({
           </button>
           {!emailOk && (
             <span className="text-[11px] text-muted-foreground">Add a valid email to continue.</span>
+          )}
+          {emailOk && !signedIn && (
+            <span className="text-[11px] text-muted-foreground">Sign in above to pay.</span>
           )}
         </div>
       </div>
@@ -465,7 +466,7 @@ export function Checkout({
           </li>
           <li className="flex gap-2">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
-            {data.saveToAccount ? "Saved to your account" : "Not saved to an account"}
+            {data.saveToAccount ? "Saved to your account after sign-in" : "Not saved to an account"}
           </li>
         </ul>
         <div className="rounded-sm bg-sidebar p-4 text-sidebar-foreground">

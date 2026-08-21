@@ -1,6 +1,7 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { RotateCcw } from "lucide-react";
 import { defaultCounty, findState } from "@/data/states";
 import { useTaxSummary } from "@/hooks/use-tax-summary";
 import { Link } from "@tanstack/react-router";
@@ -9,13 +10,28 @@ import {
   isNYExtendedFlow,
   packageStep,
 } from "@/lib/jurisdiction-config";
-import { buildIntakeMock } from "@/lib/intake-mock-data";
+import { getIntakeProfile } from "@/lib/intake-profiles";
 import {
   hasLiveLookup,
   lookupParcels,
   parcelToFormFields,
   type ParcelRecord,
 } from "@/lib/parcel-lookup";
+import {
+  draftHasProgress,
+  loadLocalDraft,
+  newDraftId,
+  persistableCheckout,
+  saveLocalDraft,
+  type DeedWizardSnapshot,
+} from "@/lib/deed-draft";
+import {
+  loadDeedById,
+  loadLatestDeedForState,
+  upsertDeedDraft,
+  useSession,
+  type SavedDeed,
+} from "@/lib/session";
 
 import { emptyForm, IntakeForm, type DeedForm } from "@/components/deed/IntakeForm";
 import { Checkout, emptyCheckout, type CheckoutData } from "@/components/deed/Checkout";
@@ -26,37 +42,16 @@ import { ProfileRail } from "@/components/deed/ProfileRail";
 import { SellingPoints } from "@/components/deed/SellingPoints";
 import { ProgressSteps, ProgressViewSwitcher } from "@/components/deed/ProgressSteps";
 
-type WizardDraft = {
-  form: DeedForm;
-  checkout: CheckoutData;
-  parcelUsed: boolean;
-};
-
-function wizardStorageKey(stateCode: string) {
-  return `deed-wizard-${stateCode}`;
-}
-
-function loadWizardDraft(stateCode: string): WizardDraft | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem(wizardStorageKey(stateCode));
-    return raw ? (JSON.parse(raw) as WizardDraft) : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveWizardDraft(stateCode: string, draft: WizardDraft) {
-  if (typeof window === "undefined") return;
-  sessionStorage.setItem(wizardStorageKey(stateCode), JSON.stringify(draft));
-}
-
-function clearWizardDraft(stateCode: string) {
-  if (typeof window === "undefined") return;
-  sessionStorage.removeItem(wizardStorageKey(stateCode));
+function checkoutFromSaved(data: SavedDeed["checkout"] | DeedWizardSnapshot["checkout"]): CheckoutData {
+  return { ...emptyCheckout(), ...data, password: "" };
 }
 
 export const Route = createFileRoute("/deed/$state")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    draft: typeof search.draft === "string" ? search.draft : undefined,
+    checkout: typeof search.checkout === "string" ? search.checkout : undefined,
+    session_id: typeof search.session_id === "string" ? search.session_id : undefined,
+  }),
   head: ({ params }) => {
     const s = findState(params.state);
     const title = `${s?.name ?? "State"} deed prep — Deed Copilot`;
@@ -73,12 +68,33 @@ export const Route = createFileRoute("/deed/$state")({
   component: DeedWizard,
 });
 
+function applySaved(
+  deed: SavedDeed,
+  pkgStep: number,
+  setDraftId: (id: string) => void,
+  setters: {
+    setStep: (n: number) => void;
+    setForm: (f: DeedForm) => void;
+    setCheckout: (c: CheckoutData) => void;
+    setParcelUsed: (v: boolean) => void;
+  },
+) {
+  setDraftId(deed.id);
+  setters.setStep(deed.status === "paid" ? pkgStep : deed.step);
+  if (deed.form) setters.setForm(deed.form);
+  if (deed.checkout) setters.setCheckout(checkoutFromSaved(deed.checkout));
+  setters.setParcelUsed(deed.parcelUsed);
+}
+
 function DeedWizard() {
   const { state: code } = Route.useParams();
   const navigate = useNavigate();
+  const session = useSession();
   const state = findState(code);
   const nyFlow = state ? isNYExtendedFlow(state.code) : false;
 
+  const [draftId, setDraftId] = useState(() => newDraftId());
+  const [hydrated, setHydrated] = useState(false);
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<DeedForm>(() =>
     emptyForm(defaultCounty(state?.code ?? "", state?.counties ?? []), state?.code),
@@ -89,6 +105,8 @@ function DeedWizard() {
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupResults, setLookupResults] = useState<ParcelRecord[]>([]);
   const [progressView, setProgressView] = useState<"rail" | "top">("rail");
+  const dbHydratedRef = useRef<string | null>(null);
+  const startFreshRef = useRef(false);
 
   const tax = useTaxSummary({
     stateCode: state?.code ?? "",
@@ -101,26 +119,85 @@ function DeedWizard() {
   const payStep = checkoutStep(code);
   const pkgStep = packageStep(code);
 
-  // Restore wizard after Stripe redirect (full page reload drops React state).
+  // Restore local draft (and Stripe return) before any writes.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("checkout") !== "success") return;
-
-    const draft = loadWizardDraft(code);
-    if (draft) {
-      setForm(draft.form);
-      setCheckout(draft.checkout);
-      setParcelUsed(draft.parcelUsed);
+    const checkoutOk = params.get("checkout") === "success";
+    const urlDraft = params.get("draft");
+    if (urlDraft) {
+      if (checkoutOk) window.history.replaceState({}, "", `${window.location.pathname}?draft=${urlDraft}`);
+      setHydrated(true);
+      return;
     }
-    setStep(pkgStep);
-    window.history.replaceState({}, "", window.location.pathname);
-    clearWizardDraft(code);
+    const local = loadLocalDraft(code);
+    if (local) {
+      startFreshRef.current = Boolean(local.startFresh);
+      setDraftId(local.id);
+      setForm(local.form);
+      setCheckout(checkoutFromSaved(local.checkout));
+      setParcelUsed(local.parcelUsed);
+      setStep(checkoutOk ? pkgStep : local.step);
+    } else if (checkoutOk) {
+      setStep(pkgStep);
+    }
+    if (checkoutOk) window.history.replaceState({}, "", window.location.pathname);
+    setHydrated(true);
   }, [code, pkgStep]);
 
+  // After sign-in: resume a specific ?draft= row, or the latest deed for this state.
   useEffect(() => {
-    if (step < payStep) return;
-    saveWizardDraft(code, { form, checkout, parcelUsed });
-  }, [code, form, checkout, parcelUsed, step, payStep]);
+    if (!hydrated || session.loading || !session.user) return;
+    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const urlDraft = params?.get("draft");
+    const key = `${session.user.id}:${urlDraft ?? "latest"}:${code}`;
+    if (dbHydratedRef.current === key) return;
+    dbHydratedRef.current = key;
+
+    const local = loadLocalDraft(code);
+    void (async () => {
+      if (urlDraft) {
+        startFreshRef.current = false;
+        const row = await loadDeedById(urlDraft);
+        if (row && row.stateCode.toUpperCase() === code.toUpperCase()) {
+          applySaved(row, pkgStep, setDraftId, { setStep, setForm, setCheckout, setParcelUsed });
+        }
+        return;
+      }
+      if (startFreshRef.current || local?.startFresh) return;
+      if (local && draftHasProgress(local)) return;
+      const row = await loadLatestDeedForState(code);
+      if (row) applySaved(row, pkgStep, setDraftId, { setStep, setForm, setCheckout, setParcelUsed });
+    })();
+  }, [hydrated, session.loading, session.user, code]);
+
+  useEffect(() => {
+    if (!hydrated || !state) return;
+    const alreadyPaid = session.deeds.some((d) => d.id === draftId && d.status === "paid");
+    const snapshot: DeedWizardSnapshot = {
+      id: draftId,
+      step,
+      form,
+      checkout: persistableCheckout(checkout),
+      parcelUsed,
+      status: alreadyPaid || step >= pkgStep ? "paid" : "draft",
+      startFresh: startFreshRef.current,
+    };
+    saveLocalDraft(code, snapshot);
+    if (!session.user || !draftHasProgress(snapshot)) return;
+    const t = window.setTimeout(() => {
+      void upsertDeedDraft({
+        id: snapshot.id,
+        stateCode: state.code,
+        stateName: state.name,
+        form: snapshot.form,
+        checkout: snapshot.checkout,
+        step: snapshot.step,
+        parcelUsed: snapshot.parcelUsed,
+        status: snapshot.status,
+      });
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [hydrated, code, draftId, step, form, checkout, parcelUsed, pkgStep, session.user, state]);
 
   if (!state) return <Navigate to="/states" />;
 
@@ -157,13 +234,16 @@ function DeedWizard() {
       const results = await lookupParcels({
         stateCode: state.code,
         county: form.county,
-        city: form.city,
+        city: getIntakeProfile(state.code).showCity ? form.city : "",
         house: form.house,
         street: form.street,
       });
       if (results.length === 0) {
+        const shortStreet = form.street.trim().length < 3;
         setLookupStatus(
-          "No parcels matched — check county, house number, and street spelling, or enter values manually.",
+          shortStreet
+            ? `No parcels matched "${form.house} ${form.street}" in ${form.county}. Type more of the street name (e.g. North Dr, not N).`
+            : "No parcels matched — check county, house number, and street spelling, or enter values manually.",
         );
         return;
       }
@@ -197,6 +277,36 @@ function DeedWizard() {
     setLookupResults([]);
   };
 
+  const startOver = () => {
+    const nextId = newDraftId();
+    const blank = emptyForm(defaultCounty(state.code, state.counties), state.code);
+    const blankCheckout = emptyCheckout();
+    startFreshRef.current = true;
+    dbHydratedRef.current = session.user ? `${session.user.id}:fresh:${nextId}` : `anon:fresh:${nextId}`;
+    setDraftId(nextId);
+    setForm(blank);
+    setCheckout(blankCheckout);
+    setParcelUsed(false);
+    setLookupStatus(null);
+    setLookupResults([]);
+    setStep(0);
+    saveLocalDraft(state.code, {
+      id: nextId,
+      step: 0,
+      form: blank,
+      checkout: persistableCheckout(blankCheckout),
+      parcelUsed: false,
+      status: "draft",
+      startFresh: true,
+    });
+    void navigate({
+      to: "/deed/$state",
+      params: { state: state.code },
+      search: {},
+      replace: true,
+    });
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground md:flex-row">
       <aside className="no-print flex w-full flex-col bg-sidebar p-8 text-sidebar-foreground md:sticky md:top-0 md:h-screen md:w-[340px] lg:w-[380px] lg:p-10">
@@ -205,12 +315,20 @@ function DeedWizard() {
             D
           </div>
           <span className="text-lg font-medium tracking-tight">Deed Copilot</span>
-          <Link
-            to="/states"
-            className="ml-auto rounded-full border border-sidebar-border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-sidebar-foreground/70 transition-colors hover:border-accent hover:text-accent"
-          >
-            ← States
-          </Link>
+          <div className="ml-auto flex items-center gap-2">
+            <Link
+              to="/account/saved"
+              className="rounded-full border border-sidebar-border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-sidebar-foreground/70 transition-colors hover:border-accent hover:text-accent"
+            >
+              My packages
+            </Link>
+            <Link
+              to="/states"
+              className="rounded-full border border-sidebar-border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-sidebar-foreground/70 transition-colors hover:border-accent hover:text-accent"
+            >
+              ← States
+            </Link>
+          </div>
         </div>
 
         <div className="mb-10">
@@ -236,9 +354,19 @@ function DeedWizard() {
       </aside>
 
       <main className="flex-1 p-6 md:p-10 lg:p-14">
-        <div className="no-print mb-8 flex items-center justify-end gap-3">
-          <ProgressViewSwitcher value={progressView} onChange={setProgressView} />
-          <ProfileRail placement="header" />
+        <div className="no-print mb-8 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={startOver}
+            className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:border-accent hover:text-accent"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Start over
+          </button>
+          <div className="flex items-center gap-3">
+            <ProgressViewSwitcher value={progressView} onChange={setProgressView} />
+            <ProfileRail placement="header" />
+          </div>
         </div>
         {progressView === "top" && (
           <div className="no-print">
@@ -266,12 +394,7 @@ function DeedWizard() {
               setParcelUsed(false);
               setLookupResults([]);
             }}
-            onClear={() => {
-              setForm(emptyForm(defaultCounty(state.code, state.counties), state.code));
-              setParcelUsed(false);
-              setLookupStatus(null);
-              setLookupResults([]);
-            }}
+            onClear={startOver}
             onBuild={onBuild}
             onFillMock={fillMockIntake}
             onExit={() => navigate({ to: "/states" })}
@@ -304,14 +427,23 @@ function DeedWizard() {
             set={setCheckoutField}
             onBack={() => setStep(nyFlow ? 2 : 0)}
             onPaid={() => {
-              clearWizardDraft(state.code);
               setStep(pkgStep);
             }}
           />
         )}
 
         {step === pkgStep && (
-          <PackageView state={state} form={form} />
+          <div className="space-y-8">
+            <PackageView state={state} form={form} />
+            <button
+              type="button"
+              onClick={startOver}
+              className="no-print inline-flex items-center gap-2 rounded-sm border border-border px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:border-accent hover:text-accent"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Start over
+            </button>
+          </div>
         )}
 
         <footer className="mt-14 border-t border-border pt-10">

@@ -13,7 +13,3 @@ export function getStripe(): Promise<Stripe | null> {
   }
   return stripePromise;
 }
-
-export function isStripeTestMode(): boolean {
-  return publishableKey?.startsWith("pk_test_") ?? false;
-}

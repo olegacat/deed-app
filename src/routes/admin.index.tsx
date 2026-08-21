@@ -77,11 +77,11 @@ function Dashboard() {
     <AdminShell title="Dashboard" subtitle="Current state only. Every metric links through to the screen where it can be acted on.">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <Metric
-          label="Active accounts"
+          label="Profiles"
           icon={Building2}
-          value={String(activeish.length)}
-          to="/admin/subscriptions"
-          sub={byTier.map((b) => `${PLAN_LABEL[b.tier]} ${b.count}`).join(" · ")}
+          value={String(accounts.length)}
+          to="/admin/accounts"
+          sub={`${activeish.length} with a recurring plan`}
         />
         <Metric
           label="MRR"

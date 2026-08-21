@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { BarChart3, Building2, CreditCard, LayoutDashboard, LogOut, Map, Tags } from "lucide-react";
+import { BarChart3, Building2, CreditCard, LayoutDashboard, LogOut, Map, Receipt, Tags } from "lucide-react";
 import { adminSignOut, getAdmin, useAdminStore } from "@/lib/admin-store";
 
 const nav = [
@@ -9,6 +9,7 @@ const nav = [
   { to: "/admin/accounts", label: "Account lookup", icon: Building2 },
   { to: "/admin/usage", label: "Usage & API cost", icon: BarChart3 },
   { to: "/admin/plans", label: "Checkout plans", icon: Tags },
+  { to: "/admin/orders", label: "Orders & payments", icon: Receipt },
   { to: "/admin/subscriptions", label: "Customer subscriptions", icon: CreditCard },
 ] as const;
 
@@ -121,6 +122,7 @@ export function StatusPill({ status }: { status: string }) {
     Trial: "bg-info/15 text-info",
     Beta: "bg-warning/20 text-warning",
     "Past due": "bg-destructive/15 text-destructive",
+    "awaiting payment": "bg-destructive/15 text-destructive",
     Paused: "bg-warning/20 text-warning",
     Canceled: "bg-muted text-muted-foreground",
   };
