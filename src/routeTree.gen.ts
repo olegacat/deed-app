@@ -17,6 +17,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminAccountsRouteImport } from './routes/admin.accounts'
 import { Route as AdminJurisdictionsRouteImport } from './routes/admin.jurisdictions'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
+import { Route as AdminPlansRouteImport } from './routes/admin.plans'
 import { Route as AdminSubscriptionsRouteImport } from './routes/admin.subscriptions'
 import { Route as AdminUsageRouteImport } from './routes/admin.usage'
 import { Route as DeedStateRouteImport } from './routes/deed.$state'
@@ -62,6 +63,11 @@ const AdminLoginRoute = AdminLoginRouteImport.update({
   path: '/admin/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminPlansRoute = AdminPlansRouteImport.update({
+  id: '/admin/plans',
+  path: '/admin/plans',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminSubscriptionsRoute = AdminSubscriptionsRouteImport.update({
   id: '/admin/subscriptions',
   path: '/admin/subscriptions',
@@ -91,6 +97,7 @@ export interface FileRoutesByFullPath {
   '/admin/accounts': typeof AdminAccountsRoute
   '/admin/jurisdictions': typeof AdminJurisdictionsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/plans': typeof AdminPlansRoute
   '/admin/subscriptions': typeof AdminSubscriptionsRoute
   '/admin/usage': typeof AdminUsageRoute
   '/deed/$state': typeof DeedStateRoute
@@ -105,6 +112,7 @@ export interface FileRoutesByTo {
   '/admin/accounts': typeof AdminAccountsRoute
   '/admin/jurisdictions': typeof AdminJurisdictionsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/plans': typeof AdminPlansRoute
   '/admin/subscriptions': typeof AdminSubscriptionsRoute
   '/admin/usage': typeof AdminUsageRoute
   '/deed/$state': typeof DeedStateRoute
@@ -120,6 +128,7 @@ export interface FileRoutesById {
   '/admin/accounts': typeof AdminAccountsRoute
   '/admin/jurisdictions': typeof AdminJurisdictionsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/plans': typeof AdminPlansRoute
   '/admin/subscriptions': typeof AdminSubscriptionsRoute
   '/admin/usage': typeof AdminUsageRoute
   '/deed/$state': typeof DeedStateRoute
@@ -136,6 +145,7 @@ export interface FileRouteTypes {
     | '/admin/accounts'
     | '/admin/jurisdictions'
     | '/admin/login'
+    | '/admin/plans'
     | '/admin/subscriptions'
     | '/admin/usage'
     | '/deed/$state'
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/admin/accounts'
     | '/admin/jurisdictions'
     | '/admin/login'
+    | '/admin/plans'
     | '/admin/subscriptions'
     | '/admin/usage'
     | '/deed/$state'
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
     | '/admin/accounts'
     | '/admin/jurisdictions'
     | '/admin/login'
+    | '/admin/plans'
     | '/admin/subscriptions'
     | '/admin/usage'
     | '/deed/$state'
@@ -179,6 +191,7 @@ export interface RootRouteChildren {
   AdminAccountsRoute: typeof AdminAccountsRoute
   AdminJurisdictionsRoute: typeof AdminJurisdictionsRoute
   AdminLoginRoute: typeof AdminLoginRoute
+  AdminPlansRoute: typeof AdminPlansRoute
   AdminSubscriptionsRoute: typeof AdminSubscriptionsRoute
   AdminUsageRoute: typeof AdminUsageRoute
   DeedStateRoute: typeof DeedStateRoute
@@ -244,6 +257,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/plans': {
+      id: '/admin/plans'
+      path: '/admin/plans'
+      fullPath: '/admin/plans'
+      preLoaderRoute: typeof AdminPlansRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/subscriptions': {
       id: '/admin/subscriptions'
       path: '/admin/subscriptions'
@@ -283,6 +303,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminAccountsRoute: AdminAccountsRoute,
   AdminJurisdictionsRoute: AdminJurisdictionsRoute,
   AdminLoginRoute: AdminLoginRoute,
+  AdminPlansRoute: AdminPlansRoute,
   AdminSubscriptionsRoute: AdminSubscriptionsRoute,
   AdminUsageRoute: AdminUsageRoute,
   DeedStateRoute: DeedStateRoute,

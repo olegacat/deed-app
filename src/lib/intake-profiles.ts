@@ -130,7 +130,7 @@ const PROFILES: Record<string, Partial<IntakeProfile>> = {
     housePlaceholder: "e.g. 26",
     streetPlaceholder: "e.g. North Dr",
     additionalGranteesPlaceholder:
-      "One additional new-owner name per line — generates an attachment page (optional)",
+      "One additional new-owner name per line — enter “None” if not applicable",
     additionalGranteesHint:
       "One grantee per line. Grantors come from the last deed of record — only new grantees are entered here.",
   },

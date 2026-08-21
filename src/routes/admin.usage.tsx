@@ -85,23 +85,23 @@ function Usage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
-                <th className="pb-2 font-medium">Jurisdiction</th>
-                <th className="pb-2 text-right font-medium">Deeds</th>
-                <th className="pb-2 text-right font-medium">API calls</th>
-                <th className="pb-2 text-right font-medium">Cost</th>
-                <th className="pb-2 text-right font-medium">Lookup failure</th>
-                <th className="pb-2 text-right font-medium">Trend</th>
+                <th className="px-3 pb-2 font-medium">Jurisdiction</th>
+                <th className="px-3 pb-2 text-right font-medium">Deeds</th>
+                <th className="px-3 pb-2 text-right font-medium">API calls</th>
+                <th className="px-3 pb-2 text-right font-medium">Cost</th>
+                <th className="px-3 pb-2 text-right font-medium">Lookup failure</th>
+                <th className="px-3 pb-2 text-right font-medium">Trend</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {rows.map((r) => (
                 <tr key={r.code}>
-                  <td className="py-2">{r.name} <span className="text-xs text-muted-foreground">{r.code}</span></td>
-                  <td className="py-2 text-right tabular-nums">{r.deeds.toLocaleString()}</td>
-                  <td className="py-2 text-right tabular-nums">{r.apiCalls.toLocaleString()}</td>
-                  <td className="py-2 text-right tabular-nums">{fmtMoney(r.apiCost)}</td>
-                  <td className={`py-2 text-right tabular-nums ${r.failureRate >= 8 ? "font-semibold text-destructive" : ""}`}>{r.failureRate}%</td>
-                  <td className={`py-2 text-right ${r.failureRate >= 8 ? "text-destructive" : "text-muted-foreground"}`}>
+                  <td className="px-3 py-2">{r.name} <span className="text-xs text-muted-foreground">{r.code}</span></td>
+                  <td className="px-3 py-2 text-right tabular-nums">{r.deeds.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{r.apiCalls.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(r.apiCost)}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${r.failureRate >= 8 ? "font-semibold text-destructive" : ""}`}>{r.failureRate}%</td>
+                  <td className={`px-3 py-2 text-right ${r.failureRate >= 8 ? "text-destructive" : "text-muted-foreground"}`}>
                     <div className="flex justify-end"><Sparkline points={r.trend} /></div>
                   </td>
                 </tr>

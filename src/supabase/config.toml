@@ -1,0 +1,14 @@
+# Supabase project config — https://supabase.com/docs/guides/cli/config
+project_id = "szplgdmqdiwsbcwmcjdx"
+
+# Edge functions — deploy: npx supabase functions deploy <name>
+# Public deed APIs (no Supabase JWT on the client).
+
+[functions.parcel-lookup]
+verify_jwt = false
+
+[functions.package-compute]
+verify_jwt = false
+
+[functions.fetch-package-pdf]
+verify_jwt = false

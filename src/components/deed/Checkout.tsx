@@ -7,7 +7,7 @@ import { PaywallDialog } from "./PaywallDialog";
 import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
 
 export interface CheckoutData {
-  plan: "single" | "monthly";
+  plan: string;
   email: string;
   phone: string;
   firm: string;
@@ -24,7 +24,7 @@ export interface CheckoutData {
 }
 
 export const emptyCheckout = (): CheckoutData => ({
-  plan: "single",
+  plan: FALLBACK_PLAN_IDS.single,
   email: "",
   phone: "",
   firm: "",
@@ -43,7 +43,9 @@ export const emptyCheckout = (): CheckoutData => ({
 const inputCls =
   "mt-1.5 w-full rounded-sm border border-input bg-card px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:border-accent/50 focus:border-ring focus:ring-2 focus:ring-ring/25";
 
-import { CHECKOUT_PLANS } from "@/lib/checkout-plans";
+import { CHECKOUT_PLANS_FALLBACK, FALLBACK_PLAN_IDS } from "@/lib/checkout-plans";
+import type { PublicBillingPlan } from "@/lib/billing-plans";
+import { listBillingPlans } from "@/utils/payments.functions";
 
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
@@ -78,8 +80,32 @@ export function Checkout({
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [billingPlans, setBillingPlans] = useState<PublicBillingPlan[]>(() =>
+    CHECKOUT_PLANS_FALLBACK.map((p) => ({
+      id: p.id,
+      label: p.label,
+      displayPrice: p.displayPrice,
+      cadence: p.cadence,
+      blurb: p.blurb,
+      recurring: p.recurring,
+      amountCents: p.unitAmount,
+      perks: [...p.perks],
+    })),
+  );
   const session = useSession();
-  const plan = CHECKOUT_PLANS[data.plan];
+  const plan = billingPlans.find((p) => p.id === data.plan) ?? billingPlans[0]!;
+
+  useEffect(() => {
+    void listBillingPlans()
+      .then((plans) => {
+        setBillingPlans(plans);
+        if (plans.length === 0) return;
+        const match = plans.find((p) => p.id === data.plan);
+        if (!match) set("plan", plans[0]!.id);
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const emailOk = /.+@.+\..+/.test(data.email);
   const canPay = emailOk && (!data.saveToAccount || data.signedIn || data.password.length >= 6);
@@ -132,14 +158,13 @@ export function Checkout({
         <section className="space-y-4">
           <SectionHeader step="A" title="Choose a plan" />
           <div className="grid gap-3 sm:grid-cols-2">
-            {(Object.keys(CHECKOUT_PLANS) as Array<keyof typeof CHECKOUT_PLANS>).map((key) => {
-              const p = CHECKOUT_PLANS[key];
-              const active = data.plan === key;
+            {billingPlans.map((p) => {
+              const active = data.plan === p.id;
               return (
                 <button
-                  key={key}
+                  key={p.id}
                   type="button"
-                  onClick={() => set("plan", key)}
+                  onClick={() => set("plan", p.id)}
                   className={`rounded-sm border p-4 text-left transition-colors ${
                     active
                       ? "border-accent bg-accent/5 ring-1 ring-accent"

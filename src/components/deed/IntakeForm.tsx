@@ -4,8 +4,14 @@ import { getIntakeProfile, NJ_EXEMPTIONS } from "@/lib/intake-profiles";
 import { NY_TP584_CONDITIONS, NY_TP584_EXEMPTIONS } from "@/lib/ny-intake";
 import type { ParcelRecord } from "@/lib/parcel-lookup";
 import { hasLiveLookup } from "@/lib/parcel-lookup";
+import {
+  intakeIsValid,
+  validateIntakeForm,
+  type IntakeFieldErrors,
+  type IntakeFieldKey,
+} from "@/lib/validate-intake";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Search, X, ChevronDown, ExternalLink, Loader2 } from "lucide-react";
+import { Check, Search, X, ChevronDown, ExternalLink, Loader2, Wand2 } from "lucide-react";
 
 import type { DeedForm } from "@/lib/deed-form.types";
 export type { DeedForm } from "@/lib/deed-form.types";
@@ -101,20 +107,37 @@ const labelCls = "block text-xs font-semibold text-foreground";
 const inputCls =
   "mt-1.5 w-full rounded-sm border border-input bg-card px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:border-accent/50 focus:border-ring focus:ring-2 focus:ring-ring/25";
 
+function fieldInputCls(hasError?: boolean) {
+  return hasError
+    ? `${inputCls} border-destructive hover:border-destructive focus:border-destructive focus:ring-destructive/25`
+    : inputCls;
+}
+
 export function Field({
   label,
   hint,
+  required,
+  error,
   children,
 }: {
   label: string;
   hint?: string;
+  required?: boolean;
+  error?: string;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <label className={labelCls}>{label}</label>
+      <label className={labelCls}>
+        {label}
+        {required ? <span className="text-destructive"> *</span> : null}
+      </label>
       {children}
-      {hint && <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{hint}</p>}
+      {error ? (
+        <p className="mt-1 text-[11px] leading-snug text-destructive">{error}</p>
+      ) : hint ? (
+        <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{hint}</p>
+      ) : null}
     </div>
   );
 }
@@ -180,11 +203,13 @@ export function SearchSelect({
   options,
   onChange,
   placeholder = "Search…",
+  hasError,
 }: {
   value: string;
   options: readonly string[];
   onChange: (v: string) => void;
   placeholder?: string;
+  hasError?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -212,7 +237,9 @@ export function SearchSelect({
           setOpen((o) => !o);
           setQ("");
         }}
-        className="flex w-full items-center justify-between rounded-sm border border-input bg-card px-3 py-2 text-left text-sm text-foreground hover:border-accent/60 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/25"
+        className={`flex w-full items-center justify-between rounded-sm border bg-card px-3 py-2 text-left text-sm text-foreground hover:border-accent/60 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/25 ${
+          hasError ? "border-destructive" : "border-input"
+        }`}
       >
         <span className={value ? "" : "text-muted-foreground"}>{value || placeholder}</span>
         <ChevronDown
@@ -345,6 +372,7 @@ export function IntakeForm({
   onInvalidateParcel,
   onBuild,
   onExit,
+  onFillMock,
 }: {
   state: StateInfo;
   form: DeedForm;
@@ -360,6 +388,7 @@ export function IntakeForm({
   onInvalidateParcel: () => void;
   onBuild: () => void;
   onExit?: () => void;
+  onFillMock?: () => void;
 }) {
   const cfg = getJurisdictionConfig(state.code);
   const intake = getIntakeProfile(state.code);
@@ -367,25 +396,73 @@ export function IntakeForm({
   const deedTypeLabels = cfg.deedTypes.map((d) => d.label);
   const granteeTypes = intake.granteeTypes ?? GRANTEE_TYPES;
   const [parcelError, setParcelError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<IntakeFieldErrors>({});
+
+  const clearFieldError = (key: IntakeFieldKey) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const setField = <K extends keyof DeedForm>(k: K, v: DeedForm[K], errorKey?: IntakeFieldKey) => {
+    set(k, v);
+    if (errorKey) clearFieldError(errorKey);
+  };
 
   const setParcelField = <K extends keyof DeedForm>(k: K, v: DeedForm[K]) => {
     set(k, v);
     onInvalidateParcel();
     setParcelError(null);
+    clearFieldError("parcelUsed");
+    if (k === "county") clearFieldError("county");
+    if (k === "house") clearFieldError("house");
+    if (k === "street") clearFieldError("street");
+    if (k === "city") clearFieldError("city");
+    if (k === "owner") clearFieldError("owner");
+    if (k === "parcel") clearFieldError("parcel");
+    if (k === "marketValue") clearFieldError("marketValue");
   };
 
   const useEnteredParcel = () => {
+    const parcelErrors = validateIntakeForm(state.code, form, intake, true);
+    const parcelKeys: IntakeFieldKey[] = [
+      "county",
+      "house",
+      "street",
+      "city",
+      "owner",
+      "parcel",
+      "marketValue",
+    ];
+    const nextErrors: IntakeFieldErrors = {};
+    for (const key of parcelKeys) {
+      if (parcelErrors[key]) nextErrors[key] = parcelErrors[key]!;
+    }
     if (!form.street.trim()) {
-      setParcelError("Enter at least the street.");
-      return;
+      nextErrors.street = "Street is required.";
     }
     if (cfg.manualRequiresAssessedValue && !form.marketValue.trim()) {
-      setParcelError("Enter the county assessed value.");
+      nextErrors.marketValue = "Enter the county assessed value.";
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors((prev) => ({ ...prev, ...nextErrors }));
+      setParcelError(Object.values(nextErrors)[0] ?? "Complete all parcel fields.");
       return;
     }
     setParcelError(null);
     set("dataProvider", "Manual entry");
     onUseParcel();
+    clearFieldError("parcelUsed");
+  };
+
+  const handleBuild = () => {
+    const errors = validateIntakeForm(state.code, form, intake, parcelUsed);
+    setFieldErrors(errors);
+    if (!intakeIsValid(errors)) return;
+    onBuild();
   };
 
   const showLiveFind =
@@ -393,11 +470,32 @@ export function IntakeForm({
     intake.parcelMode === "live-or-manual" ||
     (intake.parcelMode === "nc-live" && liveLookup);
 
+  useEffect(() => {
+    if (parcelUsed) clearFieldError("parcelUsed");
+  }, [parcelUsed]);
+
   return (
     <div className="border border-border bg-card p-7 pb-10">
-      <h2 className="font-display text-3xl text-foreground">
-        {intake.pageTitle ?? `New deed file · ${state.name}`}
-      </h2>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 className="font-display text-3xl text-foreground">
+          {intake.pageTitle ?? `New deed file · ${state.name}`}
+        </h2>
+        {onFillMock ? (
+          <button
+            type="button"
+            onClick={() => {
+              setFieldErrors({});
+              setParcelError(null);
+              onFillMock();
+            }}
+            className="inline-flex items-center gap-1.5 rounded-sm border border-input bg-secondary/50 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-accent/60 hover:bg-accent/5 hover:text-accent"
+            title="Fill all required fields with realistic demo data"
+          >
+            <Wand2 className="h-3 w-3" />
+            Fill demo
+          </button>
+        ) : null}
+      </div>
       <p className="mt-1.5 text-sm text-muted-foreground">
         {cfg.intro}
         {intake.appendRecordingNote && (
@@ -407,27 +505,32 @@ export function IntakeForm({
 
       {/* ── Parcel section ── */}
       <div className="mt-6 space-y-5">
-        <Field label={intake.jurisdictionLabel}>
+        <Field
+          label={intake.jurisdictionLabel}
+          required
+          error={fieldErrors.county}
+        >
           <SearchSelect
             value={form.county}
             options={state.counties}
             onChange={(v) => setParcelField("county", v)}
-            placeholder={`Search…`}
+            placeholder="Search…"
+            hasError={Boolean(fieldErrors.county)}
           />
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="House #">
+          <Field label="House #" required error={fieldErrors.house}>
             <input
-              className={inputCls}
+              className={fieldInputCls(Boolean(fieldErrors.house))}
               placeholder={intake.housePlaceholder ?? (state.code === "NJ" ? "e.g. 35" : "e.g. 100")}
               value={form.house}
               onChange={(e) => setParcelField("house", e.target.value)}
             />
           </Field>
-          <Field label="Street">
+          <Field label="Street" required error={fieldErrors.street}>
             <input
-              className={inputCls}
+              className={fieldInputCls(Boolean(fieldErrors.street))}
               placeholder={intake.streetPlaceholder ?? (state.code === "NJ" ? "e.g. Hillside Ave" : "e.g. Main St")}
               value={form.street}
               onChange={(e) => setParcelField("street", e.target.value)}
@@ -442,9 +545,9 @@ export function IntakeForm({
         {(intake.showCity || intake.showPropertyType) && (
           <div className="grid grid-cols-2 gap-3">
             {intake.showCity && (
-              <Field label="City / town">
+              <Field label="City / town" required error={fieldErrors.city}>
                 <input
-                  className={inputCls}
+                  className={fieldInputCls(Boolean(fieldErrors.city))}
                   placeholder="e.g. Springfield"
                   value={form.city}
                   onChange={(e) => setParcelField("city", e.target.value)}
@@ -452,7 +555,7 @@ export function IntakeForm({
               </Field>
             )}
             {intake.showPropertyType && (
-              <Field label="Property type">
+              <Field label="Property type" required>
                 <Toggle
                   options={intake.propertyTypeLabels}
                   value={form.singleFamily}
@@ -466,9 +569,9 @@ export function IntakeForm({
         {(intake.showOwner || intake.showParcelNumber) && (
           <div className="grid grid-cols-2 gap-3">
             {intake.showOwner && (
-              <Field label="Owner (optional)">
+              <Field label="Owner" required error={fieldErrors.owner}>
                 <input
-                  className={inputCls}
+                  className={fieldInputCls(Boolean(fieldErrors.owner))}
                   placeholder="From deed of record"
                   value={form.owner}
                   onChange={(e) => setParcelField("owner", e.target.value)}
@@ -477,12 +580,12 @@ export function IntakeForm({
             )}
             {intake.showParcelNumber && (
               <Field
-                label={
-                  state.code === "FL" ? "Parcel / folio # (optional)" : "Parcel # (optional)"
-                }
+                label={state.code === "FL" ? "Parcel / folio #" : "Parcel #"}
+                required
+                error={fieldErrors.parcel}
               >
                 <input
-                  className={inputCls}
+                  className={fieldInputCls(Boolean(fieldErrors.parcel))}
                   placeholder={state.code === "FL" ? "Folio" : "Parcel / account"}
                   value={form.parcel}
                   onChange={(e) => setParcelField("parcel", e.target.value)}
@@ -493,9 +596,9 @@ export function IntakeForm({
         )}
 
         {cfg.manualRequiresAssessedValue && (
-          <Field label="County assessed value">
+          <Field label="County assessed value" required error={fieldErrors.marketValue}>
             <input
-              className={inputCls}
+              className={fieldInputCls(Boolean(fieldErrors.marketValue))}
               inputMode="numeric"
               placeholder="e.g. 250000"
               value={form.marketValue}
@@ -504,6 +607,12 @@ export function IntakeForm({
               }
             />
           </Field>
+        )}
+
+        {fieldErrors.parcelUsed && !parcelUsed && (
+          <p className="rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {fieldErrors.parcelUsed}
+          </p>
         )}
 
         <div className="flex flex-wrap gap-3">
@@ -610,78 +719,95 @@ export function IntakeForm({
 
       {intake.showDeedType ? (
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Grantee (buyer) type">
+          <Field label="Grantee (buyer) type" required error={fieldErrors.granteeType}>
             <SearchSelect
               value={form.granteeType}
               options={granteeTypes}
-              onChange={(v) => set("granteeType", v)}
+              onChange={(v) => setField("granteeType", v, "granteeType")}
               placeholder="Select type"
+              hasError={Boolean(fieldErrors.granteeType)}
             />
           </Field>
-          <Field label="Deed type">
+          <Field label="Deed type" required error={fieldErrors.deedType}>
             <SearchSelect
               value={form.deedType}
               options={deedTypeLabels}
-              onChange={(v) => set("deedType", v)}
+              onChange={(v) => setField("deedType", v, "deedType")}
               placeholder="Select deed"
+              hasError={Boolean(fieldErrors.deedType)}
             />
           </Field>
         </div>
       ) : (
         <div>
-          <Field label="Grantee (buyer) type">
+          <Field label="Grantee (buyer) type" required error={fieldErrors.granteeType}>
             <SearchSelect
               value={form.granteeType}
               options={granteeTypes}
-              onChange={(v) => set("granteeType", v)}
+              onChange={(v) => setField("granteeType", v, "granteeType")}
               placeholder="Select type"
+              hasError={Boolean(fieldErrors.granteeType)}
             />
           </Field>
         </div>
       )}
 
-      <Field label="New grantee(s) (name)" hint={intake.granteeHint}>
+      <Field
+        label="New grantee(s) (name)"
+        hint={intake.granteeHint}
+        required
+        error={fieldErrors.granteeName}
+      >
         <input
-          className={inputCls}
+          className={fieldInputCls(Boolean(fieldErrors.granteeName))}
           placeholder={intake.granteeNamePlaceholder ?? "e.g. John & Jane Smith"}
           value={form.granteeName}
-          onChange={(e) => set("granteeName", e.target.value)}
+          onChange={(e) => setField("granteeName", e.target.value, "granteeName")}
         />
       </Field>
 
       {intake.showTrusteeAddress && form.granteeType === "Estate / Trust" && (
-        <Field label="Trustee address (grantee is a trust)">
+        <Field
+          label="Trustee address (grantee is a trust)"
+          required
+          error={fieldErrors.trusteeAddress}
+        >
           <input
-            className={inputCls}
+            className={fieldInputCls(Boolean(fieldErrors.trusteeAddress))}
             placeholder="Trustee mailing address"
             value={form.trusteeAddress}
-            onChange={(e) => set("trusteeAddress", e.target.value)}
+            onChange={(e) => setField("trusteeAddress", e.target.value, "trusteeAddress")}
           />
         </Field>
       )}
 
-      <Field label="Consideration">
+      <Field label="Consideration" required>
         <Toggle
           options={intake.considerationLabels}
           value={form.nominal}
-          onChange={(v) => set("nominal", v)}
+          onChange={(v) => {
+            set("nominal", v);
+            if (v) clearFieldError("consideration");
+          }}
         />
       </Field>
       {!form.nominal && (
-        <Field label="Sale price">
+        <Field label="Sale price" required error={fieldErrors.consideration}>
           <input
-            className={inputCls}
+            className={fieldInputCls(Boolean(fieldErrors.consideration))}
             inputMode="numeric"
             placeholder="e.g. 750000"
             value={form.consideration}
-            onChange={(e) => set("consideration", e.target.value.replace(/[^0-9.]/g, ""))}
+            onChange={(e) =>
+              setField("consideration", e.target.value.replace(/[^0-9.]/g, ""), "consideration")
+            }
           />
         </Field>
       )}
 
       {intake.tp584 && (
         <div className="space-y-5">
-          <Field label="Condition of conveyance (TP-584)">
+          <Field label="Condition of conveyance (TP-584)" required>
             <select
               className={inputCls}
               value={form.conditionOfConveyance}
@@ -695,7 +821,7 @@ export function IntakeForm({
             </select>
           </Field>
           {form.conditionOfConveyance === "p" && (
-            <Field label="Exemption category (TP-584 Part 3)">
+            <Field label="Exemption category (TP-584 Part 3)" required>
               <select
                 className={inputCls}
                 value={form.exemptionCategory}
@@ -715,7 +841,7 @@ export function IntakeForm({
       {intake.grantorResidency && (
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-4">
-            <Field label={intake.grantorResidency.label}>
+            <Field label={intake.grantorResidency.label} required>
               <Toggle
                 options={[
                   intake.grantorResidency.residentLabel,
@@ -725,12 +851,12 @@ export function IntakeForm({
                 onChange={(v) => set("grantorIsResident", v)}
               />
             </Field>
-            <Field label={intake.dateLabel}>
+            <Field label={intake.dateLabel} required error={fieldErrors.date}>
               <input
                 type="date"
-                className={inputCls}
+                className={fieldInputCls(Boolean(fieldErrors.date))}
                 value={form.date}
-                onChange={(e) => set("date", e.target.value)}
+                onChange={(e) => setField("date", e.target.value, "date")}
               />
             </Field>
           </div>
@@ -743,7 +869,7 @@ export function IntakeForm({
       )}
 
       {intake.showIt2663Gain && !form.grantorIsResident && (
-        <Field label="IT-2663: is the gain reported for federal income tax?">
+        <Field label="IT-2663: is the gain reported for federal income tax?" required>
           <Toggle
             options={["No", "Yes"]}
             value={form.gainReported}
@@ -754,7 +880,7 @@ export function IntakeForm({
 
       {intake.showCreditLineMortgage && (
         <div className="space-y-2">
-          <Field label="Subject to a credit line mortgage? (TP-584 Schedule C)">
+          <Field label="Subject to a credit line mortgage? (TP-584 Schedule C)" required>
             <Toggle
               options={["No", "Yes"]}
               value={form.creditLineMortgage}
@@ -771,7 +897,7 @@ export function IntakeForm({
 
       {intake.njExemption && (
         <div className="space-y-5">
-          <Field label="RTF exemption (Realty Transfer Fee)">
+          <Field label="RTF exemption (Realty Transfer Fee)" required>
             <SearchSelect
               value={form.njExemption}
               options={NJ_EXEMPTIONS}
@@ -779,12 +905,12 @@ export function IntakeForm({
             />
           </Field>
           {form.njExemption === "Other exempt conveyance (describe)" && (
-            <Field label="Describe exempt conveyance">
+            <Field label="Describe exempt conveyance" required error={fieldErrors.exemptionDescribe}>
               <input
-                className={inputCls}
+                className={fieldInputCls(Boolean(fieldErrors.exemptionDescribe))}
                 placeholder="Describe the exempt conveyance"
                 value={form.exemptionDescribe}
-                onChange={(e) => set("exemptionDescribe", e.target.value)}
+                onChange={(e) => setField("exemptionDescribe", e.target.value, "exemptionDescribe")}
               />
             </Field>
           )}
@@ -792,23 +918,23 @@ export function IntakeForm({
       )}
 
       {!intake.grantorResidency && (
-        <Field label={intake.dateLabel}>
+        <Field label={intake.dateLabel} required error={fieldErrors.date}>
           <input
             type="date"
-            className={inputCls}
+            className={fieldInputCls(Boolean(fieldErrors.date))}
             value={form.date}
-            onChange={(e) => set("date", e.target.value)}
+            onChange={(e) => setField("date", e.target.value, "date")}
           />
         </Field>
       )}
 
       {intake.showPreparedBy !== false && (
-        <Field label={intake.preparedByLabel}>
+        <Field label={intake.preparedByLabel} required error={fieldErrors.preparedByName}>
           <input
-            className={inputCls}
+            className={fieldInputCls(Boolean(fieldErrors.preparedByName))}
             placeholder={intake.preparedByPlaceholder}
             value={form.preparedByName}
-            onChange={(e) => set("preparedByName", e.target.value)}
+            onChange={(e) => setField("preparedByName", e.target.value, "preparedByName")}
           />
         </Field>
       )}
@@ -816,58 +942,62 @@ export function IntakeForm({
       {intake.attorneyPhones ? (
         <div className="space-y-5">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Buyer's attorney">
+            <Field label="Buyer's attorney" required error={fieldErrors.buyerAttorney}>
               <input
-                className={inputCls}
+                className={fieldInputCls(Boolean(fieldErrors.buyerAttorney))}
                 placeholder="Name / firm"
                 value={form.buyerAttorney}
-                onChange={(e) => set("buyerAttorney", e.target.value)}
+                onChange={(e) => setField("buyerAttorney", e.target.value, "buyerAttorney")}
               />
             </Field>
-            <Field label="Buyer's attorney phone">
+            <Field label="Buyer's attorney phone" required error={fieldErrors.buyerAttorneyPhone}>
               <input
-                className={inputCls}
+                className={fieldInputCls(Boolean(fieldErrors.buyerAttorneyPhone))}
                 placeholder="(___) ___-____"
                 value={form.buyerAttorneyPhone}
-                onChange={(e) => set("buyerAttorneyPhone", e.target.value)}
+                onChange={(e) =>
+                  setField("buyerAttorneyPhone", e.target.value, "buyerAttorneyPhone")
+                }
               />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Seller's attorney">
+            <Field label="Seller's attorney" required error={fieldErrors.sellerAttorney}>
               <input
-                className={inputCls}
+                className={fieldInputCls(Boolean(fieldErrors.sellerAttorney))}
                 placeholder="Name / firm"
                 value={form.sellerAttorney}
-                onChange={(e) => set("sellerAttorney", e.target.value)}
+                onChange={(e) => setField("sellerAttorney", e.target.value, "sellerAttorney")}
               />
             </Field>
-            <Field label="Seller's attorney phone">
+            <Field label="Seller's attorney phone" required error={fieldErrors.sellerAttorneyPhone}>
               <input
-                className={inputCls}
+                className={fieldInputCls(Boolean(fieldErrors.sellerAttorneyPhone))}
                 placeholder="(___) ___-____"
                 value={form.sellerAttorneyPhone}
-                onChange={(e) => set("sellerAttorneyPhone", e.target.value)}
+                onChange={(e) =>
+                  setField("sellerAttorneyPhone", e.target.value, "sellerAttorneyPhone")
+                }
               />
             </Field>
           </div>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Buyer's attorney">
+          <Field label="Buyer's attorney" required error={fieldErrors.buyerAttorney}>
             <input
-              className={inputCls}
+              className={fieldInputCls(Boolean(fieldErrors.buyerAttorney))}
               placeholder="Name / firm"
               value={form.buyerAttorney}
-              onChange={(e) => set("buyerAttorney", e.target.value)}
+              onChange={(e) => setField("buyerAttorney", e.target.value, "buyerAttorney")}
             />
           </Field>
-          <Field label="Seller's attorney">
+          <Field label="Seller's attorney" required error={fieldErrors.sellerAttorney}>
             <input
-              className={inputCls}
+              className={fieldInputCls(Boolean(fieldErrors.sellerAttorney))}
               placeholder="Name / firm"
               value={form.sellerAttorney}
-              onChange={(e) => set("sellerAttorney", e.target.value)}
+              onChange={(e) => setField("sellerAttorney", e.target.value, "sellerAttorney")}
             />
           </Field>
         </div>
@@ -875,7 +1005,7 @@ export function IntakeForm({
 
       {cfg.extraFields.map((f) =>
         f.kind === "toggle" ? (
-          <Field key={f.key} label={f.label}>
+          <Field key={f.key} label={f.label} required>
             <Toggle
               options={[f.off ?? "No", f.on ?? "Yes"]}
               value={form.mdFirstTimeBuyer}
@@ -888,28 +1018,36 @@ export function IntakeForm({
       <Field
         label="Additional grantees (beyond the first)"
         hint={intake.additionalGranteesHint}
+        required
+        error={fieldErrors.additionalGrantees}
       >
         <textarea
           rows={3}
-          className={inputCls}
+          className={fieldInputCls(Boolean(fieldErrors.additionalGrantees))}
           placeholder={intake.additionalGranteesPlaceholder}
           value={form.additionalGrantees}
-          onChange={(e) => set("additionalGrantees", e.target.value)}
+          onChange={(e) => setField("additionalGrantees", e.target.value, "additionalGrantees")}
         />
       </Field>
 
-      <div className="mt-10 flex flex-wrap items-center gap-4 border-t border-border pt-6">
-        <button
-          type="button"
-          onClick={onBuild}
-          disabled={!parcelUsed}
-          className="rounded-sm bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Build package →
-        </button>
-        {!parcelUsed && (
-          <span className="text-xs text-muted-foreground">{intake.parcelBlockedHint}</span>
+      <div className="mt-10 flex flex-col gap-3 border-t border-border pt-6">
+        {Object.keys(fieldErrors).length > 0 && (
+          <p className="rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            Complete all required fields marked with * before continuing.
+          </p>
         )}
+        <div className="flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            onClick={handleBuild}
+            className="rounded-sm bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
+          >
+            Build package →
+          </button>
+          {!parcelUsed && !fieldErrors.parcelUsed && (
+            <span className="text-xs text-muted-foreground">{intake.parcelBlockedHint}</span>
+          )}
+        </div>
       </div>
       </div>
     </div>

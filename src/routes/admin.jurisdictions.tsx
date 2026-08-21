@@ -66,10 +66,10 @@ function Jurisdictions() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-card">
                 <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
-                  <th className="pb-2 font-medium">State</th>
-                  <th className="pb-2 font-medium">Status</th>
-                  <th className="pb-2 text-right font-medium">Counties</th>
-                  <th className="pb-2 text-right font-medium">Updated</th>
+                  <th className="px-3 pb-2 font-medium">State</th>
+                  <th className="px-3 pb-2 font-medium">Status</th>
+                  <th className="px-3 pb-2 text-right font-medium">Counties</th>
+                  <th className="px-3 pb-2 text-right font-medium">Updated</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -81,12 +81,12 @@ function Jurisdictions() {
                       selected === j.code ? "bg-primary/10 shadow-[inset_2px_0_0_0_var(--color-primary)]" : ""
                     }`}
                   >
-                    <td className="py-2">
+                    <td className="px-3 py-2">
                       {j.name} <span className="text-xs text-muted-foreground">{j.code}</span>
                     </td>
-                    <td className="py-2"><StatusPill status={j.status === "live" ? "Live" : "Beta"} /></td>
-                    <td className="py-2 text-right tabular-nums">{j.countyCount}</td>
-                    <td className="py-2 text-right text-xs text-muted-foreground">{fmtDate(j.updatedAt)}</td>
+                    <td className="px-3 py-2"><StatusPill status={j.status === "live" ? "Live" : "Beta"} /></td>
+                    <td className="px-3 py-2 text-right tabular-nums">{j.countyCount}</td>
+                    <td className="px-3 py-2 text-right text-xs text-muted-foreground">{fmtDate(j.updatedAt)}</td>
                   </tr>
                 ))}
               </tbody>

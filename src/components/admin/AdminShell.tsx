@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { BarChart3, Building2, CreditCard, LayoutDashboard, LogOut, Map } from "lucide-react";
+import { BarChart3, Building2, CreditCard, LayoutDashboard, LogOut, Map, Tags } from "lucide-react";
 import { adminSignOut, getAdmin, useAdminStore } from "@/lib/admin-store";
 
 const nav = [
@@ -8,7 +8,8 @@ const nav = [
   { to: "/admin/jurisdictions", label: "Jurisdictions & rates", icon: Map },
   { to: "/admin/accounts", label: "Account lookup", icon: Building2 },
   { to: "/admin/usage", label: "Usage & API cost", icon: BarChart3 },
-  { to: "/admin/subscriptions", label: "Subscriptions", icon: CreditCard },
+  { to: "/admin/plans", label: "Checkout plans", icon: Tags },
+  { to: "/admin/subscriptions", label: "Customer subscriptions", icon: CreditCard },
 ] as const;
 
 export function AdminShell({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {

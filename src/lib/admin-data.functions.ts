@@ -53,8 +53,8 @@ function guard(token: string) {
 }
 
 async function rest<T>(path: string): Promise<T[]> {
-  const url = process.env["EXT_SUPABASE_URL"];
-  const key = process.env["EXT_SUPABASE_SECRET_KEY"];
+  const url = process.env["EXT_SUPABASE_URL"] || process.env["SUPABASE_URL"];
+  const key = process.env["EXT_SUPABASE_SECRET_KEY"] || process.env["SUPABASE_SERVICE_ROLE_KEY"];
   if (!url || !key) throw new Error("Backend credentials are not configured.");
   const res = await fetch(`${url}/rest/v1/${path}`, {
     headers: { apikey: key, Authorization: `Bearer ${key}` },
@@ -64,8 +64,8 @@ async function rest<T>(path: string): Promise<T[]> {
 }
 
 async function write(path: string, body: unknown, method: "PATCH" | "POST") {
-  const url = process.env["EXT_SUPABASE_URL"];
-  const key = process.env["EXT_SUPABASE_SECRET_KEY"];
+  const url = process.env["EXT_SUPABASE_URL"] || process.env["SUPABASE_URL"];
+  const key = process.env["EXT_SUPABASE_SECRET_KEY"] || process.env["SUPABASE_SERVICE_ROLE_KEY"];
   if (!url || !key) throw new Error("Backend credentials are not configured.");
   const res = await fetch(`${url}/rest/v1/${path}`, {
     method,

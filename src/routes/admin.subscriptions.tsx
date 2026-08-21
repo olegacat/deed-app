@@ -89,7 +89,7 @@ function Subscriptions() {
   }
 
   return (
-    <AdminShell title="Subscription management" subtitle="Every subscription in one operational list. All row actions require confirmation.">
+    <AdminShell title="Customer subscription management" subtitle="Every subscription in one operational list. All row actions require confirmation.">
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-sm border border-border bg-card p-4">
           <p className="text-xs uppercase tracking-wider text-muted-foreground">Subscriptions</p>
@@ -129,31 +129,31 @@ function Subscriptions() {
             <table className="w-full min-w-[56rem] text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
-                  <th className="pb-2 font-medium">Firm</th>
-                  <th className="pb-2 font-medium">Plan</th>
-                  <th className="pb-2 font-medium">Status</th>
-                  <th className="pb-2 font-medium">Next renewal</th>
-                  <th className="pb-2 text-right font-medium">MRR</th>
-                  <th className="pb-2 font-medium">Stripe sub ID</th>
-                  <th className="pb-2 font-medium">Actions</th>
+                  <th className="px-3 pb-2 font-medium">Firm</th>
+                  <th className="px-3 pb-2 font-medium">Plan</th>
+                  <th className="px-3 pb-2 font-medium">Status</th>
+                  <th className="px-3 pb-2 font-medium">Next renewal</th>
+                  <th className="px-3 pb-2 text-right font-medium">MRR</th>
+                  <th className="px-3 pb-2 font-medium">Stripe sub ID</th>
+                  <th className="px-3 pb-2 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {rows.map((a) => (
                   <tr key={a.id}>
-                    <td className="py-2">
+                    <td className="px-3 py-2">
                       <p className="font-medium">{a.firm}</p>
                       <p className="text-xs text-muted-foreground">{a.email}</p>
                     </td>
-                    <td className="py-2">{PLAN_LABEL[a.plan]}</td>
-                    <td className="py-2">
+                    <td className="px-3 py-2">{PLAN_LABEL[a.plan]}</td>
+                    <td className="px-3 py-2">
                       <StatusPill status={STATUS_LABEL[a.status]} />
                       {a.cancelAtPeriodEnd ? <p className="mt-1 text-[11px] text-muted-foreground">cancels at period end</p> : null}
                     </td>
-                    <td className="py-2">{fmtDate(a.renewalDate)}</td>
-                    <td className="py-2 text-right tabular-nums">{fmtMoney(mrrOf(a))}</td>
-                    <td className="py-2 font-mono text-xs">{a.stripeSubId}</td>
-                    <td className="py-2">
+                    <td className="px-3 py-2">{fmtDate(a.renewalDate)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(mrrOf(a))}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{a.stripeSubId}</td>
+                    <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-1">
                         <button onClick={() => open("plan", a)} className="rounded-sm border border-border px-2 py-1 text-[11px] hover:bg-muted">Change plan</button>
                         {a.status !== "canceled" ? (

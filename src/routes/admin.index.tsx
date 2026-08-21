@@ -159,19 +159,19 @@ function Dashboard() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
-                <th className="pb-2 font-medium">State</th>
-                <th className="pb-2 text-right font-medium">Deeds</th>
-                <th className="pb-2 text-right font-medium">API cost</th>
-                <th className="pb-2 text-right font-medium">Lookup fail</th>
+                <th className="px-3 pb-2 font-medium">State</th>
+                <th className="px-3 pb-2 text-right font-medium">Deeds</th>
+                <th className="px-3 pb-2 text-right font-medium">API cost</th>
+                <th className="px-3 pb-2 text-right font-medium">Lookup fail</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {rows.slice(0, 5).map((r) => (
                 <tr key={r.code}>
-                  <td className="py-2">{r.name}</td>
-                  <td className="py-2 text-right tabular-nums">{r.deeds}</td>
-                  <td className="py-2 text-right tabular-nums">{fmtMoney(r.apiCost)}</td>
-                  <td className={`py-2 text-right tabular-nums ${r.failureRate >= 8 ? "text-destructive" : ""}`}>{r.failureRate}%</td>
+                  <td className="px-3 py-2">{r.name}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{r.deeds}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(r.apiCost)}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${r.failureRate >= 8 ? "text-destructive" : ""}`}>{r.failureRate}%</td>
                 </tr>
               ))}
             </tbody>

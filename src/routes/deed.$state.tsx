@@ -9,6 +9,7 @@ import {
   isNYExtendedFlow,
   packageStep,
 } from "@/lib/jurisdiction-config";
+import { buildIntakeMock } from "@/lib/intake-mock-data";
 import {
   hasLiveLookup,
   lookupParcels,
@@ -188,6 +189,14 @@ function DeedWizard() {
     setStep(nyFlow ? 1 : payStep);
   };
 
+  const fillMockIntake = () => {
+    const mock = buildIntakeMock(state.code, form.county);
+    setForm((f) => ({ ...f, ...mock.form }));
+    setParcelUsed(true);
+    setLookupStatus(mock.statusMessage);
+    setLookupResults([]);
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground md:flex-row">
       <aside className="no-print flex w-full flex-col bg-sidebar p-8 text-sidebar-foreground md:sticky md:top-0 md:h-screen md:w-[340px] lg:w-[380px] lg:p-10">
@@ -264,6 +273,7 @@ function DeedWizard() {
               setLookupResults([]);
             }}
             onBuild={onBuild}
+            onFillMock={fillMockIntake}
             onExit={() => navigate({ to: "/states" })}
           />
         )}

@@ -55,11 +55,11 @@ function Accounts() {
         <table className="mt-3 w-full text-sm">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
-              <th className="pb-2 font-medium">Firm</th>
-              <th className="pb-2 font-medium">Email</th>
-              <th className="pb-2 font-medium">Account ID</th>
-              <th className="pb-2 font-medium">Plan</th>
-              <th className="pb-2 font-medium">Status</th>
+              <th className="px-3 pb-2 font-medium">Firm</th>
+              <th className="px-3 pb-2 font-medium">Email</th>
+              <th className="px-3 pb-2 font-medium">Account ID</th>
+              <th className="px-3 pb-2 font-medium">Plan</th>
+              <th className="px-3 pb-2 font-medium">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -71,11 +71,11 @@ function Accounts() {
                   openId === a.id ? "bg-primary/10 shadow-[inset_2px_0_0_0_var(--color-primary)]" : ""
                 }`}
               >
-                <td className="py-2 font-medium">{a.firm}</td>
-                <td className="py-2 text-muted-foreground">{a.email}</td>
-                <td className="py-2 tabular-nums">{a.id}</td>
-                <td className="py-2">{PLAN_LABEL[a.plan]}</td>
-                <td className="py-2"><StatusPill status={STATUS_LABEL[a.status]} /></td>
+                <td className="px-3 py-2 font-medium">{a.firm}</td>
+                <td className="px-3 py-2 text-muted-foreground">{a.email}</td>
+                <td className="px-3 py-2 tabular-nums">{a.id}</td>
+                <td className="px-3 py-2">{PLAN_LABEL[a.plan]}</td>
+                <td className="px-3 py-2"><StatusPill status={STATUS_LABEL[a.status]} /></td>
               </tr>
             ))}
             {results.length === 0 ? (

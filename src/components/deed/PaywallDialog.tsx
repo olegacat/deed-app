@@ -13,7 +13,7 @@ export function PaywallDialog({
   onComplete,
 }: {
   open: boolean;
-  plan: "single" | "monthly";
+  plan: string;
   email?: string;
   userId?: string;
   title: string;
